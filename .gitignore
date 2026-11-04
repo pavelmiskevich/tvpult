@@ -1,0 +1,18 @@
+# Pairing tokens, remembered addresses, logs — private, per machine
+.data/
+
+# Your own device configuration (copy of devices.example.toml)
+devices.toml
+
+# Environment, caches, builds
+.venv/
+__pycache__/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Tool folders
+.claude/
+.playwright-mcp/
+.remember/

@@ -1,0 +1,42 @@
+[project]
+name = "tvpult"
+version = "0.0.1.dev0"
+description = "A local remote for Samsung Smart TVs (Tizen): finds the TVs on your network, no cloud. Opens from a desktop shortcut."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "pavelmiskevich" }]
+keywords = ["samsung", "tizen", "smart-tv", "remote", "wake-on-lan", "chromecast"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "pychromecast>=14.1.1",
+    "samsungtvws>=3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/pavelmiskevich/tvpult"
+Issues = "https://github.com/pavelmiskevich/tvpult/issues"
+
+[project.scripts]
+tvpult = "tvpult.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

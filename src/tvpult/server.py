@@ -1,0 +1,324 @@
+"""Small HTTP server: the remote page plus a JSON API.
+
+Security model: the server listens only on localhost and, optionally, on the
+laptop's Tailscale address (the tailnet authenticates who can reach it). Inside
+that, two checks stop a random web page in the browser from driving the TVs:
+  * the Host header must be one of our own names (blocks DNS rebinding);
+  * every POST must carry the custom header X-Tvpult: 1 (a cross-site page can't
+    add it without a CORS preflight, which this server never approves).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import threading
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
+from typing import Any
+from urllib.parse import urlsplit
+
+from .catalog import UnknownKey
+from .devices import DeviceError, Home
+
+log = logging.getLogger(__name__)
+
+_ROUTE = re.compile(r"^/api/(tv|bar)/([A-Za-z0-9_-]+)/([a-z]+)$")
+MAX_BODY = 16 * 1024
+
+
+class ApiError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
+    """Route one API call. Pure apart from the device calls, so it is easy to test."""
+    if method == "GET" and path == "/api/status":
+        quick = getattr(getattr(home, "config", None), "quick_apps", [])
+        return {"devices": home.status(rediscover="background"), "quick": quick}
+    if method != "POST":
+        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+    m = _ROUTE.match(path)
+    if not m:
+        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+    kind, dev_id, action = m.groups()
+    try:
+        return _act(home, kind, dev_id, action, body)
+    except DeviceError as first:
+        if _found_elsewhere(home, kind, dev_id, action):
+            try:
+                return _act(home, kind, dev_id, action, body)
+            except DeviceError as e:
+                raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
+        raise ApiError(HTTPStatus.CONFLICT, str(first)) from first
+
+
+def _found_elsewhere(home: Home, kind: str, dev_id: str, action: str) -> bool:
+    """After a failed action: is the device unreachable here, and did a search find it somewhere?
+
+    Not for power: an off TV is unreachable by nature, and searching would only delay Wake-on-LAN.
+    """
+    relocate = getattr(home, "relocate", None)
+    if relocate is None or (kind, action) == ("tv", "power"):
+        return False
+    try:
+        dev = home.tv(dev_id) if kind == "tv" else home.bar(dev_id)
+    except DeviceError:
+        return False  # unknown device id: nothing to search for
+    if dev.online():
+        return False  # it's there; the failure was something else
+    return dev_id in relocate()
+
+
+def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) -> Any:
+    """Run one action. DeviceError propagates (dispatch decides about retrying)."""
+    try:
+        if kind == "tv":
+            tv = home.tv(dev_id)
+            if action == "key":
+                keys = body.get("keys") or ([body["key"]] if "key" in body else [])
+                if not keys or not all(isinstance(k, str) for k in keys):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "keys required")
+                return {"sent": tv.send_keys(keys)}
+            if action == "launch":
+                app = body.get("app")
+                if not isinstance(app, str) or not app:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "app required")
+                return {"launched": tv.launch(app)}
+            if action == "text":
+                text = body.get("text")
+                if not isinstance(text, str) or not text:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "text required")
+                return {"typed": tv.send_text(text, submit=bool(body.get("submit")))}
+            if action == "power":
+                on = body.get("on")
+                if not isinstance(on, bool):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "on must be true or false")
+                return {"result": tv.power_on() if on else tv.power_off()}
+        else:
+            bar = home.bar(dev_id)
+            if action == "volume":
+                if isinstance(body.get("level"), int):
+                    return {"volume": bar.set_volume(body["level"])}
+                if isinstance(body.get("delta"), int):
+                    return {"volume": bar.change_volume(body["delta"])}
+                raise ApiError(HTTPStatus.BAD_REQUEST, "level or delta required")
+            if action == "mute":
+                muted = body.get("muted")
+                if muted is not None and not isinstance(muted, bool):
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "muted must be bool or null")
+                return {"muted": bar.set_muted(muted)}
+    except UnknownKey as e:
+        raise ApiError(HTTPStatus.BAD_REQUEST, f"key not allowed: {e}") from e
+    raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+
+
+class Presence:
+    """Who has the remote page open — so the desktop-shortcut mode can stop when the last one closes.
+
+    Pages say hello every ~20 s (browsers slow timers in hidden tabs to about once a minute, hence the
+    generous `stale`) and say bye when closed. Client ids are random 128-bit values generated by the
+    page; bye is accepted only for an id that said hello, so a foreign site can't stop the server.
+    """
+
+    _ID = re.compile(r"^[0-9a-f]{32}$")
+
+    def __init__(self, idle_exit: bool = False, grace: float = 8.0, stale: float = 180.0,
+                 startup: float = 120.0, clock=None):
+        import time as _time
+
+        self._clock = clock or _time.monotonic
+        self.idle_exit = idle_exit
+        self.grace, self.stale, self.startup = grace, stale, startup
+        self._clients: dict[str, float] = {}
+        self._started = self._clock()
+        self._empty_since: float | None = None
+        self._lock = threading.Lock()
+
+    def valid(self, client: Any) -> bool:
+        return isinstance(client, str) and bool(self._ID.match(client))
+
+    def hello(self, client: str) -> None:
+        with self._lock:
+            new = client not in self._clients
+            self._clients[client] = self._clock()
+            self._empty_since = None
+            if new:
+                log.info("remote page opened (%d open)", len(self._clients))
+
+    def bye(self, client: str) -> bool:
+        with self._lock:
+            if self._clients.pop(client, None) is None:
+                return False
+            if not self._clients:
+                self._empty_since = self._clock()
+            log.info("remote page closed (%d open)", len(self._clients))
+            return True
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._clients)
+
+    def should_exit(self) -> bool:
+        if not self.idle_exit:
+            return False
+        now = self._clock()
+        with self._lock:
+            for cid, seen in list(self._clients.items()):
+                if now - seen > self.stale:  # tab gone without a bye (crash, sleep, killed browser)
+                    del self._clients[cid]
+                    if not self._clients:
+                        self._empty_since = now
+            if self._clients:
+                return False
+            if self._empty_since is None:  # nobody ever opened the page
+                return now - self._started > self.startup
+            return now - self._empty_since >= self.grace  # grace: a reload says bye then hello
+
+
+def host_allowed(host_header: str | None, allowed: set[str]) -> bool:
+    if not host_header:
+        return False
+    hostname = urlsplit("//" + host_header).hostname or ""
+    return hostname.lower() in allowed
+
+
+def origin_ok(origin: str | None, host_header: str | None) -> bool:
+    if origin is None:
+        return True
+    return urlsplit(origin).netloc.lower() == (host_header or "").lower()
+
+
+def _page() -> bytes:
+    return resources.files("tvpult").joinpath("static/index.html").read_bytes()
+
+
+def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None = None):
+    presence = presence or Presence()
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "tvpult"
+
+        def log_message(self, fmt, *args):  # every request (a status poll each 5 s) only at debug level
+            log.debug("%s %s", self.address_string(), fmt % args)
+
+        def _send(self, status: int, payload: bytes, ctype: str) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def _json(self, status: int, obj: Any) -> None:
+            self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
+
+        def _guard(self) -> bool:
+            if not host_allowed(self.headers.get("Host"), allowed_hosts):
+                self._json(HTTPStatus.FORBIDDEN, {"error": "host not allowed"})
+                return False
+            return True
+
+        def do_GET(self):
+            if not self._guard():
+                return
+            path = urlsplit(self.path).path
+            if path in ("/", "/index.html"):
+                self._send(HTTPStatus.OK, _page(), "text/html; charset=utf-8")
+                return
+            self._handle("GET", path, {})
+
+        def do_POST(self):
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > MAX_BODY:
+                self.close_connection = True
+                self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "too large"})
+                return
+            # Read the body before any refusal, so the client gets the answer
+            # instead of a reset connection.
+            raw = self.rfile.read(length)
+            if not self._guard():
+                return
+            path = urlsplit(self.path).path
+            if path == "/api/bye":
+                # Sent by navigator.sendBeacon on page close, which can't add custom headers.
+                # Safe without X-Tvpult: it only works for a random client id that said hello.
+                try:
+                    client = json.loads(raw or b"{}").get("client")
+                except (ValueError, AttributeError):
+                    client = None
+                ok = presence.valid(client) and presence.bye(client)
+                self._json(HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST, {"bye": bool(ok)})
+                return
+            if self.headers.get("X-Tvpult") != "1" or not origin_ok(
+                self.headers.get("Origin"), self.headers.get("Host")
+            ):
+                self._json(HTTPStatus.FORBIDDEN, {"error": "forbidden"})
+                return
+            try:
+                body = json.loads(raw or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError
+            except ValueError:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "bad json"})
+                return
+            if path == "/api/hello":
+                if not presence.valid(body.get("client")):
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "bad client id"})
+                    return
+                presence.hello(body["client"])
+                self._json(HTTPStatus.OK, {"hello": True, "auto_exit": presence.idle_exit})
+                return
+            self._handle("POST", path, body)
+
+        def _handle(self, method: str, path: str, body: dict[str, Any]) -> None:
+            try:
+                self._json(HTTPStatus.OK, dispatch(home, method, path, body))
+            except ApiError as e:
+                self._json(e.status, {"error": str(e)})
+            except Exception as e:  # keep the server alive, report the failure
+                log.exception("unhandled error")
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+
+    return Handler
+
+
+def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None = None,
+          presence: Presence | None = None, on_ready=None) -> None:
+    """Serve until Ctrl+C — or, with presence.idle_exit, until the last page is closed."""
+    import time
+
+    presence = presence or Presence()
+    allowed = {"localhost", "127.0.0.1", *binds, *(extra_names or set())}
+    allowed = {a.lower() for a in allowed}
+    handler = make_handler(home, allowed, presence)
+    servers = [ThreadingHTTPServer((addr, port), handler) for addr in binds]
+    threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
+    for t in threads:
+        t.start()
+    for addr in binds:
+        print(f"  http://{addr}:{port}/")
+    # Devices may have moved since last time: look for any that don't answer where we left them.
+    threading.Thread(target=lambda: home.status(rediscover="wait"), daemon=True).start()
+    if on_ready:
+        on_ready()
+    try:
+        while not presence.should_exit():
+            time.sleep(1)
+        log.info("last page closed — stopping")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for s in servers:
+            s.shutdown()
+        home.close()

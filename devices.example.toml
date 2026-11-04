@@ -1,0 +1,40 @@
+# tvpult device configuration — example.
+# Copy to devices.toml and adjust. (A setup wizard that finds the TVs by itself is planned.)
+#
+# Addresses below are only a first guess: tvpult finds each device by its MAC (TV) or Cast UUID
+# (soundbar) if it moved, and remembers the new address in .data/addresses.json.
+
+[tv.living]
+name = "Living room"
+host = "192.168.1.50"
+mac = "02:00:00:00:55:01"     # the TV's Wi-Fi MAC: identity check, discovery and Wake-on-LAN
+wake_on_lan = true            # needs "Power On with Mobile" enabled on the TV
+# lan_mac = "…"               # if the TV is on a cable: its Ethernet MAC (that is what ARP shows)
+
+[tv.bedroom]
+name = "Bedroom"
+host = "192.168.1.51"
+mac = "02:00:00:00:32:01"
+wake_on_lan = false           # some older sets turn Wi-Fi off when switched off
+# Apps the TV's REST API can't see but can launch (2017-era sets: built-in org.tizen.* apps)
+assume_apps = { browser = "org.tizen.browser" }
+
+[soundbar.bar]
+name = "Soundbar"
+host = "192.168.1.60"
+uuid = "6f1c2a3b-1d2e-4f50-8a6b-00000000ba01"   # Cast UUID: main identity
+mac = "02:00:00:00:ba:01"                       # optional: confirmed against the ARP table
+
+# Wi-Fi labels: TVs report the access point's MAC (BSSID), not the network name.
+[wifi]
+"02:00:00:00:a9:21" = "Home Wi-Fi"
+
+[ui]
+quick_apps = ["youtube", "netflix", "browser"]
+
+# Extra private /24 networks to search (the laptop's own network is always searched).
+[network]
+scan_subnets = []
+
+# Your own apps: alias = "Tizen app id" or ["id1", "id2"] (ids differ between model years).
+[apps]

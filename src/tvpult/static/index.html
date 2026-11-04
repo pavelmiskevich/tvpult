@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111318">
+<title>Пульт</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='4' width='20' height='13' rx='2' fill='%232f6df6'/%3E%3Cpath d='M8 21h8' stroke='%232f6df6' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f3f4f7; --panel: #ffffff; --btn: #e9ebf0; --btn-press: #d6d9e1;
+    --text: #15171c; --muted: #6b7180; --accent: #2f6df6; --accent-text: #fff;
+    --danger: #e5484d; --ok: #2e9e5b; --ring: rgba(47,109,246,.35);
+    --radius: 18px; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0f13; --panel: #171a21; --btn: #222631; --btn-press: #2d3240;
+      --text: #eef0f5; --muted: #8b92a3; --accent: #4f86ff; --ring: rgba(79,134,255,.4);
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(12px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom)); }
+  main { max-width: 420px; margin: 0 auto; display: grid; gap: 14px; }
+
+  .tabs { display: flex; gap: 6px; background: var(--panel); padding: 5px; border-radius: 14px; box-shadow: var(--shadow); }
+  .tab { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 6px; border-radius: 10px;
+    font: inherit; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .tab[aria-selected="true"] { background: var(--btn); color: var(--text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .5; flex: none; }
+  .dot.on { background: var(--ok); opacity: 1; }
+  .dot.standby { background: #d9a400; opacity: 1; }
+
+  .card { background: var(--panel); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+  .head { display: flex; align-items: center; gap: 12px; }
+  .head .info { flex: 1; min-width: 0; }
+  .head h1 { font-size: 18px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head p { margin: 2px 0 0; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  button.b { border: 0; background: var(--btn); color: var(--text); border-radius: 14px; font: inherit; font-weight: 600;
+    min-height: 52px; cursor: pointer; display: grid; place-items: center; user-select: none; touch-action: manipulation;
+    transition: background .1s, transform .05s; }
+  button.b:active, button.b.pressed { background: var(--btn-press); transform: scale(.97); }
+  button.b:focus-visible, .tab:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+  button.b:disabled { opacity: .4; cursor: default; }
+  button.power { width: 52px; height: 52px; min-height: 0; border-radius: 50%; background: var(--danger); color: #fff; flex: none; }
+  button.power.off { background: var(--btn); color: var(--text); }
+  svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .pad { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 64px); gap: 8px; }
+  .pad .ok { background: var(--accent); color: var(--accent-text); border-radius: 50%;
+    height: 100%; aspect-ratio: 1; justify-self: center; }
+  .tab { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+  .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .rocker { display: grid; grid-template-rows: 52px 28px 52px; gap: 0; background: var(--btn); border-radius: 16px; overflow: hidden; }
+  .rocker button.b { border-radius: 0; background: transparent; }
+  .rocker span { text-align: center; color: var(--muted); font-size: 13px; align-self: center; }
+  .label { font-size: 13px; color: var(--muted); margin: 0 0 8px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .apps button.b { padding: 0 10px; font-size: 15px; }
+  .apps button.current { outline: 2px solid var(--accent); }
+  .empty { color: var(--muted); font-size: 14px; }
+  .textrow { display: flex; gap: 8px; }
+  .textrow input { flex: 1; min-width: 0; min-height: 52px; border-radius: 14px; border: 1px solid var(--btn-press);
+    background: var(--bg); color: var(--text); font: inherit; padding: 0 14px; }
+  .textrow input:focus { outline: 3px solid var(--ring); outline-offset: 1px; }
+  .textrow button.b { padding: 0 18px; background: var(--accent); color: var(--accent-text); }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 10px; color: var(--muted); font-size: 14px; }
+  .quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+  .quick:empty { display: none; }
+  .quick button.b { min-height: 56px; background: var(--panel); box-shadow: var(--shadow); padding: 0 8px;
+    font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .quick button.b.current { outline: 2px solid var(--accent); }
+  .quick button.b.missing { opacity: .45; font-weight: 500; }
+
+  .vol { display: flex; align-items: center; gap: 12px; }
+  .vol output { min-width: 3ch; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  input[type=range] { flex: 1; accent-color: var(--accent); height: 32px; }
+
+  .toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(120%);
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100% - 32px);
+    transition: transform .2s, opacity .2s; pointer-events: none; opacity: 0; }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <nav class="tabs" role="tablist" id="tabs"><span class="tab">Загрузка…</span></nav>
+
+  <!-- TV -->
+  <section id="tv" hidden>
+    <div class="card head">
+      <div class="info"><h1 id="tvName">—</h1><p id="tvState">…</p></div>
+      <button class="b power" id="power" aria-label="Питание">
+        <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
+      </button>
+    </div>
+
+    <div class="quick" id="quick" style="margin-top:14px"></div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="pad">
+        <button class="b" data-key="KEY_MENU" aria-label="Меню"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <button class="b" data-key="KEY_UP" aria-label="Вверх"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+        <button class="b" data-key="KEY_SOURCE" aria-label="Источник"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="m10 10 3 2-3 2"/></svg></button>
+        <button class="b" data-key="KEY_LEFT" aria-label="Влево"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+        <button class="b ok" data-key="KEY_ENTER" aria-label="OK">OK</button>
+        <button class="b" data-key="KEY_RIGHT" aria-label="Вправо"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="b" data-key="KEY_RETURN" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button class="b" data-key="KEY_DOWN" aria-label="Вниз"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="b" data-key="KEY_HOME" aria-label="Домой"><svg viewBox="0 0 24 24"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/></svg></button>
+      </div>
+      <div class="row4" style="margin-top:8px">
+        <button class="b" data-key="KEY_REWIND" aria-label="Перемотка назад"><svg viewBox="0 0 24 24"><path d="m11 18-7-6 7-6zM20 18l-7-6 7-6z"/></svg></button>
+        <button class="b" data-key="KEY_PLAY" aria-label="Играть"><svg viewBox="0 0 24 24"><path d="m7 5 12 7-12 7z"/></svg></button>
+        <button class="b" data-key="KEY_PAUSE" aria-label="Пауза"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button class="b" data-key="KEY_FF" aria-label="Вперёд"><svg viewBox="0 0 24 24"><path d="m13 18 7-6-7-6zM4 18l7-6-7-6z"/></svg></button>
+      </div>
+    </div>
+
+    <div class="rockers" style="margin-top:14px">
+      <div class="rocker">
+        <button class="b" data-key="KEY_VOLUP" data-repeat aria-label="Громче">+</button>
+        <span>Громк.</span>
+        <button class="b" data-key="KEY_VOLDOWN" data-repeat aria-label="Тише">−</button>
+      </div>
+      <div class="rocker">
+        <button class="b" data-key="KEY_CHUP" aria-label="Канал вверх"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+        <span>Канал</span>
+        <button class="b" data-key="KEY_CHDOWN" aria-label="Канал вниз"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+    </div>
+    <div class="row3">
+      <button class="b" data-key="KEY_MUTE">Без звука</button>
+      <button class="b" data-key="KEY_INFO">Инфо</button>
+      <button class="b" data-key="KEY_EXIT">Выход</button>
+    </div>
+
+    <form class="card" id="textForm" style="margin-top:14px" autocomplete="off">
+      <p class="label">Ввести текст на ТВ</p>
+      <div class="textrow">
+        <input id="textIn" type="text" maxlength="256" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="Сначала открой поле ввода на ТВ" aria-label="Текст для ТВ">
+        <button class="b" type="submit" id="textSend">Ввести</button>
+      </div>
+      <label class="check"><input type="checkbox" id="textSubmit" checked> и нажать «Готово»</label>
+    </form>
+
+    <div class="card" style="margin-top:14px">
+      <p class="label">Приложения</p>
+      <div class="apps" id="apps"></div>
+    </div>
+  </section>
+
+  <!-- Soundbar -->
+  <section id="bar" hidden>
+    <div class="card head">
+      <div class="info"><h1 id="barName">—</h1><p id="barState">…</p></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Громкость</p>
+      <div class="vol">
+        <button class="b" id="barDown" style="width:52px" aria-label="Тише">−</button>
+        <input type="range" id="barVol" min="0" max="100" step="1" aria-label="Громкость">
+        <button class="b" id="barUp" style="width:52px" aria-label="Громче">+</button>
+        <output id="barVolOut">–</output>
+      </div>
+      <button class="b" id="barMute" style="width:100%;margin-top:12px">Выключить звук</button>
+    </div>
+  </section>
+
+  <p class="hint" id="hint">Стрелки, Enter, Backspace (назад), H (домой) работают с клавиатуры</p>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const state = { devices: [], quick: [], sel: null, busy: false };
+const APP_LABELS = { youtube: "YouTube", kinopoisk: "Кинопоиск", premier: "Премьер", okko: "Okko",
+  browser: "Браузер", netflix: "Netflix", prime: "Prime Video", ivi: "Иви", wink: "Wink", start: "START",
+  kion: "КИОН", rutube: "RUTUBE", vkvideo: "VK Видео", moretv: "more.tv" };
+try { state.sel = localStorage.getItem("tvpult.sel"); } catch (_) {}
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Tvpult": "1" }, body: JSON.stringify(body),
+  };
+  const r = await fetch(path, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+const buzz = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (_) {} };
+const current = () => state.devices.find((d) => d.id === state.sel);
+
+function powerClass(d) {
+  if (d.kind === "soundbar") return d.online ? "on" : "";
+  if (!d.online) return "";
+  return d.power === "on" ? "on" : "standby";
+}
+
+function renderTabs() {
+  const nav = $("tabs");
+  nav.replaceChildren(...state.devices.map((d) => {
+    const b = document.createElement("button");
+    b.className = "tab"; b.role = "tab"; b.setAttribute("aria-selected", String(d.id === state.sel));
+    const dot = document.createElement("span"); dot.className = "dot " + powerClass(d);
+    b.append(dot, document.createTextNode(d.name));
+    b.onclick = () => { state.sel = d.id; try { localStorage.setItem("tvpult.sel", d.id); } catch (_) {} render(); };
+    return b;
+  }));
+}
+
+function renderTv(d) {
+  $("tvName").textContent = d.name;
+  let s;
+  if (!d.online) s = d.wake_on_lan ? "Выключен — можно включить отсюда" : "Выключен — включи пультом";
+  else if (d.power !== "on") s = "Режим ожидания";
+  else s = d.current_app ? "На экране: " + d.current_app : (d.model || "Включён");
+  if (d.online && d.network) s += " · " + d.network;
+  if (d.online && !d.paired) s += " · не сопряжён";
+  $("tvState").textContent = s;
+  const on = d.online && d.power === "on";
+  $("power").classList.toggle("off", !on);
+  $("power").disabled = !on && !d.wake_on_lan && !d.online;
+  document.querySelectorAll("#tv [data-key]").forEach((b) => (b.disabled = !on));
+  ["textIn", "textSend"].forEach((id) => ($(id).disabled = !on));
+  renderQuick(d, on);
+  const apps = $("apps");
+  if (!on) { apps.innerHTML = '<span class="empty">ТВ выключен</span>'; return; }
+  const rest = (d.apps || []).filter((a) => !state.quick.includes(a.alias));
+  apps.closest(".card").hidden = !rest.length && on;
+  if (!rest.length) { apps.innerHTML = '<span class="empty">Нет других известных приложений</span>'; return; }
+  apps.replaceChildren(...rest.map((a) => {
+    const b = document.createElement("button");
+    b.className = "b" + (a.name === d.current_app ? " current" : ""); b.textContent = APP_LABELS[a.alias] || a.name;
+    b.onclick = () => act(() => api(`/api/tv/${d.id}/launch`, { app: a.alias }), "Открываю " + a.name);
+    return b;
+  }));
+}
+
+function renderQuick(d, on) {
+  const installed = Object.fromEntries((d.apps || []).map((a) => [a.alias, a]));
+  $("quick").replaceChildren(...state.quick.map((alias) => {
+    const a = installed[alias];
+    const b = document.createElement("button");
+    b.className = "b" + (a && a.name === d.current_app ? " current" : "") + (on && !a ? " missing" : "");
+    b.textContent = APP_LABELS[alias] || (a ? a.name : alias);
+    b.disabled = !on;
+    if (on && !a) b.title = "Не найдено на этом ТВ";
+    b.onclick = () => a
+      ? act(() => api(`/api/tv/${d.id}/launch`, { app: alias }), "Открываю " + b.textContent)
+      : toast(b.textContent + ": не найдено на этом ТВ");
+    return b;
+  }));
+}
+
+let dragging = false;
+function renderBar(d) {
+  $("barName").textContent = d.name;
+  $("barState").textContent = !d.online ? "Недоступен" : (d.app ? "Играет: " + d.app : "В сети");
+  if (!dragging && typeof d.volume === "number") { $("barVol").value = d.volume; $("barVolOut").textContent = d.volume; }
+  $("barMute").textContent = d.muted ? "Включить звук" : "Выключить звук";
+  ["barVol", "barUp", "barDown", "barMute"].forEach((id) => ($(id).disabled = !d.online));
+}
+
+function render() {
+  if (!current() && state.devices.length) state.sel = state.devices[0].id;
+  renderTabs();
+  const d = current(); if (!d) return;
+  $("tv").hidden = d.kind !== "tv"; $("bar").hidden = d.kind !== "soundbar";
+  $("hint").hidden = d.kind !== "tv" || matchMedia("(pointer: coarse)").matches;
+  d.kind === "tv" ? renderTv(d) : renderBar(d);
+}
+
+async function refresh() {
+  try { const s = await api("/api/status"); state.devices = s.devices; state.quick = s.quick || []; render(); }
+  catch (e) { toast("Нет связи с ноутбуком: " + e.message); }
+}
+
+let refreshTimer;
+function refreshSoon(ms) { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, ms); }
+
+async function act(fn, okMsg, { refreshAfter = 1200 } = {}) {
+  buzz();
+  try { await fn(); if (okMsg) toast(okMsg); if (refreshAfter) refreshSoon(refreshAfter); }
+  catch (e) { toast(e.message); }
+}
+
+// Plain key presses don't change what the page shows, so no status refresh after them.
+function sendKey(key) {
+  const d = current(); if (!d || d.kind !== "tv") return;
+  act(() => api(`/api/tv/${d.id}/key`, { keys: [key] }), null, { refreshAfter: 0 });
+}
+
+// Buttons; volume buttons repeat while held.
+document.querySelectorAll("[data-key]").forEach((b) => {
+  let t1, t2;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  b.addEventListener("click", () => { if (!b.dataset.repeat) sendKey(b.dataset.key); });
+  if (b.dataset.repeat) {
+    b.addEventListener("pointerdown", () => { sendKey(b.dataset.key); t1 = setTimeout(() => (t2 = setInterval(() => sendKey(b.dataset.key), 220)), 450); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => b.addEventListener(ev, stop));
+  }
+});
+
+$("power").onclick = () => {
+  const d = current(); const on = d.online && d.power === "on";
+  act(() => api(`/api/tv/${d.id}/power`, { on: !on }).then((r) => toast(r.result)));
+};
+
+$("textForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const d = current(); const text = $("textIn").value;
+  if (!d || !text) return;
+  act(() => api(`/api/tv/${d.id}/text`, { text, submit: $("textSubmit").checked })
+    .then(() => { $("textIn").value = ""; }), "Текст отправлен", { refreshAfter: 0 });
+});
+
+const barVol = $("barVol");
+barVol.addEventListener("input", () => { dragging = true; $("barVolOut").textContent = barVol.value; });
+barVol.addEventListener("change", () => {
+  dragging = false; const d = current();
+  act(() => api(`/api/bar/${d.id}/volume`, { level: Number(barVol.value) }));
+});
+$("barUp").onclick = () => act(() => api(`/api/bar/${current().id}/volume`, { delta: 2 }));
+$("barDown").onclick = () => act(() => api(`/api/bar/${current().id}/volume`, { delta: -2 }));
+$("barMute").onclick = () => act(() => api(`/api/bar/${current().id}/mute`, { muted: null }));
+
+const KEYMAP = { ArrowUp: "KEY_UP", ArrowDown: "KEY_DOWN", ArrowLeft: "KEY_LEFT", ArrowRight: "KEY_RIGHT",
+  Enter: "KEY_ENTER", Backspace: "KEY_RETURN", Escape: "KEY_RETURN", h: "KEY_HOME", "+": "KEY_VOLUP", "-": "KEY_VOLDOWN", m: "KEY_MUTE" };
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = KEYMAP[e.key]; if (!k) return;
+  const d = current(); if (!d || d.kind !== "tv") return;
+  e.preventDefault(); sendKey(k);
+});
+
+// Presence: tell the server this page is open, and say bye when it closes. When the remote was
+// started from the desktop shortcut, the server stops after the last page is closed.
+const CLIENT = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+const hello = () => api("/api/hello", { client: CLIENT }).catch(() => {});
+hello();
+setInterval(hello, 20000); // keeps going in hidden tabs too (browsers slow it to ~1/min, that's fine)
+window.addEventListener("pagehide", () => {
+  try { navigator.sendBeacon("/api/bye", new Blob([JSON.stringify({ client: CLIENT })], { type: "text/plain" })); } catch (_) {}
+});
+window.addEventListener("pageshow", (e) => { if (e.persisted) hello(); }); // back from bfcache
+
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>
