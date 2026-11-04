@@ -39,9 +39,22 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     """Route one API call. Pure apart from the device calls, so it is easy to test."""
     if method == "GET" and path == "/api/status":
         quick = getattr(getattr(home, "config", None), "quick_apps", [])
-        return {"devices": home.status(rediscover="background"), "quick": quick}
+        return {"devices": home.status(rediscover="background"), "quick": quick,
+                "setup": bool(getattr(home, "setup_needed", False))}
     if method != "POST":
         raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+    if path == "/api/setup/scan":
+        return {"tvs": home.setup_scan()}
+    if path == "/api/setup/pair":
+        cid, name = body.get("cid"), body.get("name", "")
+        if not isinstance(cid, str) or not re.fullmatch(r"c\d{1,4}", cid):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "cid required")
+        if not isinstance(name, str) or len(name) > 40:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "name must be text, up to 40 characters")
+        try:
+            return home.setup_pair(cid, name)
+        except DeviceError as e:
+            raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
     m = _ROUTE.match(path)
     if not m:
         raise ApiError(HTTPStatus.NOT_FOUND, "not found")

@@ -32,18 +32,18 @@ Needs [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 and the depen
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-uv run tvpult init        # creates devices.toml in your user folder and prints where it is
-                          # put your TVs' MAC addresses there (Settings > About on the TV)
-uv run tvpult find --all  # lists every Samsung TV on your network (model, year, MAC)
-uv run tvpult pair living # press "Allow" on the TV
-uv run tvpult shortcut    # creates the desktop shortcut
+uv run tvpult shortcut    # creates the desktop shortcut "Пульт ТВ"
 ```
+
+Switch the TVs on and double-click the shortcut. The first time, a **setup screen** finds every Samsung TV
+on your network: give each a name, click **Connect**, press **Allow** on the TV — done, that's your remote.
+More TVs later: the **+ ТВ** tab. No files to edit. (Without the shortcut: `uv run tvpult serve` and open
+http://127.0.0.1:8765/.)
 
 Your files live in your user folder, not next to the code: `tvpult paths` shows where
 (Windows: `%LOCALAPPDATA%\tvpult`; Linux: `~/.config/tvpult` and `~/.local/share/tvpult`).
 `--config` / `--data-dir` or `TVPULT_CONFIG` / `TVPULT_DATA_DIR` override that.
-
-Then double-click the shortcut. Or run `uv run tvpult serve` and open http://127.0.0.1:8765/.
+The command line can do the same: `tvpult find --all` lists every TV, `tvpult init` starts a config by hand.
 
 Command line too: `tvpult status`, `tvpult key living home right ok`, `tvpult launch living youtube`,
 `tvpult vol +5`, `tvpult text living "search words"` — `tvpult --help` for all.

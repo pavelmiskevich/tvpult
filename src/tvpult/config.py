@@ -10,6 +10,7 @@ Overrides, strongest first: CLI flags (use_paths), then TVPULT_CONFIG / TVPULT_D
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tomllib
 from collections.abc import Mapping
@@ -147,3 +148,69 @@ def load_config(path: Path | None = None) -> Config:
     subnets = [str(s) for s in raw.get("network", {}).get("scan_subnets", [])]
     return Config(tvs=tvs, soundbars=bars, extra_apps=apps, quick_apps=quick, wifi_names=wifi,
                   scan_subnets=subnets)
+
+
+# --- writing (setup wizard) --------------------------------------------------------------
+_TRANSLIT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+                     ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r",
+                      "s", "t", "u", "f", "h", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"], strict=True))
+
+
+def slugify(name: str, taken: set[str] | frozenset[str] = frozenset()) -> str:
+    """A short ASCII id for a device name ('Гостиная' -> 'gostinaya'), unique among `taken`."""
+    text = "".join(_TRANSLIT.get(c, c) for c in name.lower())
+    base = "-".join(re.findall(r"[a-z0-9]+", text))[:24].strip("-") or "tv"
+    slug, n = base, 2
+    while slug in taken:
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def toml_string(value: str) -> str:
+    """A TOML basic string literal (quotes, backslashes and control characters escaped)."""
+    out = []
+    for ch in value:
+        if ch in '"\\':
+            out.append("\\" + ch)
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def add_tv_to_config(tv: TvConfig, path: Path | None = None) -> None:
+    """Append a [tv.<id>] section to devices.toml; everything already there stays untouched.
+
+    The result is re-read; if it doesn't parse or doesn't contain the new TV, the old file comes back.
+    """
+    path = Path(path) if path else config_file()
+    if not re.fullmatch(r"[a-z0-9-]{1,32}", tv.id):
+        raise ValueError(f"bad device id: {tv.id!r}")
+    before = path.read_text(encoding="utf-8") if path.exists() else None
+    section = "\n".join([
+        f"[tv.{tv.id}]",
+        f"name = {toml_string(tv.name)}",
+        f"host = {toml_string(tv.host)}",
+        f"mac = {toml_string(tv.mac)}",
+        f"wake_on_lan = {'true' if tv.wake_on_lan else 'false'}",
+    ]) + "\n"
+    if before is None:
+        text = "# tvpult devices — written by the setup wizard; safe to edit by hand.\n\n" + section
+    else:
+        text = before + ("" if before.endswith("\n") or not before else "\n") + "\n" + section
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    try:
+        if load_config(path).tvs.get(tv.id) is None:
+            raise ValueError("the new TV is missing after writing")
+    except (tomllib.TOMLDecodeError, ValueError, KeyError):
+        if before is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(before, encoding="utf-8")
+        raise

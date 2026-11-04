@@ -24,9 +24,28 @@
   html, body { margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { padding: max(12px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom)); }
-  main { max-width: 420px; margin: 0 auto; display: grid; gap: 14px; }
+  main { max-width: 420px; margin: 0 auto; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  main > * { min-width: 0; }  /* never wider than the screen, whatever the content */
 
   .tabs { display: flex; gap: 6px; background: var(--panel); padding: 5px; border-radius: 14px; box-shadow: var(--shadow); }
+  .tab.add { flex: 0 0 auto; padding: 10px 12px; color: var(--accent); }
+  .setup-title { font-size: 20px; margin: 0 0 6px; }
+  .setup-msg { color: var(--muted); margin: 0 0 14px; font-size: 15px; }
+  .setup-list { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+  .cand { border: 1px solid var(--btn-press); border-radius: 14px; padding: 12px; display: grid; gap: 8px;
+    grid-template-columns: minmax(0, 1fr); }
+  .cand > * { min-width: 0; overflow-wrap: anywhere; }
+  .cand h2 { font-size: 16px; margin: 0; }
+  .cand .meta { color: var(--muted); font-size: 13px; }
+  .cand .row { display: flex; gap: 8px; }
+  .cand input { flex: 1; min-width: 0; min-height: 48px; border-radius: 12px; border: 1px solid var(--btn-press);
+    background: var(--bg); color: var(--text); font: inherit; padding: 0 12px; }
+  .cand .note { font-size: 13px; color: var(--danger); }
+  .cand .ok { font-size: 14px; color: var(--ok); font-weight: 600; }
+  .cand .wait { font-size: 14px; color: var(--accent); }
+  .setup-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .setup-actions .b { flex: 1; }
+  button.b.primary { background: var(--accent); color: var(--accent-text); }
   .tab { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 6px; border-radius: 10px;
     font: inherit; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .tab[aria-selected="true"] { background: var(--btn); color: var(--text); }
@@ -93,6 +112,19 @@
 <body>
 <main>
   <nav class="tabs" role="tablist" id="tabs"><span class="tab">Загрузка…</span></nav>
+
+  <!-- Setup wizard: shown when nothing is configured, or from the "+ ТВ" tab -->
+  <section id="setup" hidden>
+    <div class="card">
+      <h1 class="setup-title">Найдём ваши телевизоры</h1>
+      <p class="setup-msg" id="setupMsg">Ноутбук и телевизоры должны быть в одной сети, телевизоры — включены.</p>
+      <div class="setup-list" id="setupList"></div>
+      <div class="setup-actions">
+        <button class="b" id="setupScan">Искать снова</button>
+        <button class="b primary" id="setupDone" hidden>Готово</button>
+      </div>
+    </div>
+  </section>
 
   <!-- TV -->
   <section id="tv" hidden>
@@ -183,7 +215,7 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { devices: [], quick: [], sel: null, busy: false };
+const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true };
 const APP_LABELS = { youtube: "YouTube", kinopoisk: "Кинопоиск", premier: "Премьер", okko: "Okko",
   browser: "Браузер", netflix: "Netflix", prime: "Prime Video", ivi: "Иви", wink: "Wink", start: "START",
   kion: "КИОН", rutube: "RUTUBE", vkvideo: "VK Видео", moretv: "more.tv" };
@@ -215,15 +247,94 @@ function powerClass(d) {
 
 function renderTabs() {
   const nav = $("tabs");
-  nav.replaceChildren(...state.devices.map((d) => {
+  const tabs = state.devices.map((d) => {
     const b = document.createElement("button");
-    b.className = "tab"; b.role = "tab"; b.setAttribute("aria-selected", String(d.id === state.sel));
+    b.className = "tab"; b.role = "tab"; b.setAttribute("aria-selected", String(d.id === state.sel && !state.setupOpen));
     const dot = document.createElement("span"); dot.className = "dot " + powerClass(d);
     b.append(dot, document.createTextNode(d.name));
-    b.onclick = () => { state.sel = d.id; try { localStorage.setItem("tvpult.sel", d.id); } catch (_) {} render(); };
+    b.onclick = () => {
+      state.sel = d.id; state.setupOpen = false;
+      try { localStorage.setItem("tvpult.sel", d.id); } catch (_) {}
+      render();
+    };
     return b;
-  }));
+  });
+  const add = document.createElement("button");
+  add.className = "tab add"; add.textContent = "+ ТВ"; add.title = "Найти и подключить телевизор";
+  add.setAttribute("aria-selected", String(state.setupOpen));
+  add.onclick = () => openSetup();
+  nav.replaceChildren(...tabs, add);
 }
+
+// --- setup wizard ---------------------------------------------------------------------
+function openSetup() {
+  state.setupOpen = true;
+  render();
+  scanTvs();
+}
+
+async function scanTvs() {
+  const list = $("setupList"), msg = $("setupMsg"), btn = $("setupScan");
+  btn.disabled = true;
+  msg.textContent = "Ищу телевизоры в сети…";
+  list.replaceChildren();
+  try {
+    const { tvs } = await api("/api/setup/scan", {});
+    if (!tvs.length) {
+      msg.textContent = "Телевизоров Samsung не найдено. Включите их и проверьте, что ноутбук в той же сети.";
+    } else {
+      msg.textContent = "Найдено: " + tvs.length + ". Дайте телевизору имя и нажмите «Подключить».";
+      list.replaceChildren(...tvs.map(candidateCard));
+    }
+  } catch (e) {
+    msg.textContent = "Не получилось поискать: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;  // always text: names come from the network
+  return n;
+}
+
+function candidateCard(t) {
+  const card = el("div", "cand");
+  card.append(el("h2", null, t.name || t.model || "Samsung TV"));
+  card.append(el("div", "meta", [t.model, t.year, t.host].filter(Boolean).join(" · ")));
+  if (t.configured) { card.append(el("div", "ok", "Уже подключён")); return card; }
+  if (!t.confirmed) { card.append(el("div", "note", t.note || "Сеть не подтвердила этот телевизор")); return card; }
+  const row = el("div", "row");
+  const input = el("input");
+  input.type = "text"; input.maxLength = 40; input.value = ""; input.placeholder = "Имя: Гостиная";
+  input.setAttribute("aria-label", "Имя телевизора");
+  const go = el("button", "b primary", "Подключить");
+  const status = el("div", "wait");
+  status.hidden = true;
+  go.onclick = async () => {
+    go.disabled = true; input.disabled = true;
+    status.hidden = false; status.className = "wait";
+    status.textContent = "Смотрите на экран телевизора и нажмите «Разрешить» (до 45 секунд)…";
+    try {
+      await api("/api/setup/pair", { cid: t.cid, name: input.value.trim() || t.model || "Телевизор" });
+      status.className = "ok"; status.textContent = "Подключён ✓";
+      row.remove();
+      $("setupDone").hidden = false;
+      refreshSoon(300);
+    } catch (e) {
+      status.className = "note"; status.textContent = "Не подключился: " + e.message;
+      go.disabled = false; input.disabled = false;
+    }
+  };
+  row.append(input, go);
+  card.append(row, status);
+  return card;
+}
+
+$("setupScan").onclick = () => scanTvs();
+$("setupDone").onclick = () => { state.setupOpen = false; $("setupDone").hidden = true; refresh(); };
 
 function renderTv(d) {
   $("tvName").textContent = d.name;
@@ -281,14 +392,24 @@ function renderBar(d) {
 function render() {
   if (!current() && state.devices.length) state.sel = state.devices[0].id;
   renderTabs();
-  const d = current(); if (!d) return;
+  $("setup").hidden = !state.setupOpen;
+  const d = current();
+  if (state.setupOpen || !d) {
+    $("tv").hidden = true; $("bar").hidden = true; $("hint").hidden = true;
+    return;
+  }
   $("tv").hidden = d.kind !== "tv"; $("bar").hidden = d.kind !== "soundbar";
   $("hint").hidden = d.kind !== "tv" || matchMedia("(pointer: coarse)").matches;
   d.kind === "tv" ? renderTv(d) : renderBar(d);
 }
 
 async function refresh() {
-  try { const s = await api("/api/status"); state.devices = s.devices; state.quick = s.quick || []; render(); }
+  try {
+    const s = await api("/api/status");
+    state.devices = s.devices; state.quick = s.quick || [];
+    if (s.setup && state.setupAuto) { state.setupAuto = false; openSetup(); return; }  // first run: the wizard
+    render();
+  }
   catch (e) { toast("Нет связи с ноутбуком: " + e.message); }
 }
 

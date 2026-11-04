@@ -26,12 +26,13 @@
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-uv run tvpult init                       # создаст devices.toml в папке пользователя и покажет где;
-                                         # впишите туда MAC ваших ТВ (Настройки > Об этом ТВ)
-uv run tvpult find --all                 # все Samsung TV в сети: модель, год, MAC
-uv run tvpult pair living                # на ТВ нажать «Разрешить»
-uv run tvpult shortcut                   # ярлык на рабочем столе
+uv run tvpult shortcut                   # ярлык «Пульт ТВ» на рабочем столе
 ```
+
+Включите телевизоры и дважды щёлкните по ярлыку. В первый раз откроется **мастер настройки**: он найдёт
+все Samsung в сети — дайте каждому имя, нажмите **«Подключить»** и **«Разрешить»** на экране ТВ. Ещё
+телевизор позже — вкладка **«+ ТВ»**. Файлы править не нужно. (Из командной строки: `tvpult find --all` —
+все ТВ в сети, `tvpult init` — начать конфиг вручную.)
 
 Настройки и данные лежат в папке пользователя, а не рядом с кодом: `tvpult paths` покажет где
 (Windows: `%LOCALAPPDATA%\tvpult`).

@@ -149,7 +149,8 @@ def test_dispatch_keys_and_launch():
     home = FakeHome()
     assert dispatch(home, "POST", "/api/tv/tv_a/key", {"keys": ["ok", "home"]}) == {"sent": ["KEY_ENTER", "KEY_HOME"]}
     assert dispatch(home, "POST", "/api/tv/tv_a/launch", {"app": "youtube"}) == {"launched": "111299001912"}
-    assert dispatch(home, "GET", "/api/status", {}) == {"devices": [{"id": "tv_a", "kind": "tv"}], "quick": []}
+    expected = {"devices": [{"id": "tv_a", "kind": "tv"}], "quick": [], "setup": False}
+    assert dispatch(home, "GET", "/api/status", {}) == expected
 
 
 def test_dispatch_soundbar():
