@@ -20,9 +20,9 @@ from typing import Any
 
 import requests
 
+from . import config as paths
 from . import discovery
 from .catalog import app_catalog, normalize_key
-from . import config as paths
 from .config import Config, SoundbarConfig, TvConfig
 from .wol import send_wol, subnet_broadcast
 
