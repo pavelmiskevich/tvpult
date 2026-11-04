@@ -259,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         s = sub.add_parser(name, help=help_)
         s.add_argument("--port", type=int, default=DEFAULT_PORT)
         s.add_argument("--tailnet", action="store_true", help="открыть ещё и в сети Tailscale")
+        s.add_argument("--lan", action="store_true", help="открыть для телефонов в домашней сети (вход по PIN)")
     sub.add_parser("shortcut", help=f"создать ярлык «{SHORTCUT_NAME}» на рабочем столе")
     sub.add_parser("init", help="создать devices.toml из примера в папке пользователя")
     sub.add_parser("paths", help="где лежат настройки и данные")
@@ -377,14 +378,24 @@ def main(argv: list[str] | None = None) -> int:
                 if name:
                     names.add(name)
                     print(f"  в Tailscale также: http://{name}:{a.port}/")
+            lan, auth = None, None
+            if a.lan:  # phones on the home network, with PIN sign-in
+                from . import discovery
+                from .auth import LanAuth
+
+                lan = discovery.default_local_ip()
+                if not lan or not discovery.is_private_lan(__import__("ipaddress").IPv4Address(lan)):
+                    print("Не нашёл адрес ноутбука в домашней сети.", file=sys.stderr)
+                    return 2
+                auth = LanAuth(paths.data_dir() / "sessions.json")
             url = f"http://127.0.0.1:{a.port}/"
             if a.cmd == "app":
                 print("Пульт открыт; закрой окно пульта — всё остановится:")
                 serve(home, binds, a.port, names, Presence(idle_exit=True),
-                      on_ready=None if a.no_browser else (lambda: _open_remote(url)))
+                      on_ready=None if a.no_browser else (lambda: _open_remote(url)), lan=lan, auth=auth)
             else:
                 print("Пульт открыт (Ctrl+C — остановить):")
-                serve(home, binds, a.port, names)
+                serve(home, binds, a.port, names, lan=lan, auth=auth)
         return 0
     except UnknownKey as e:
         print(f"Нет такой кнопки: {e}. Список: tvpult keys", file=sys.stderr)

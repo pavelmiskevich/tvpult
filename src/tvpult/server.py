@@ -1,8 +1,8 @@
 """Small HTTP server: the remote page plus a JSON API.
 
-Security model: the server listens only on localhost and, optionally, on the
-laptop's Tailscale address (the tailnet authenticates who can reach it). Inside
-that, two checks stop a random web page in the browser from driving the TVs:
+Security model: the server listens on localhost; optionally on the laptop's Tailscale address (the tailnet
+authenticates who can reach it) and, with --lan, on the home-network address — where every API call needs a
+PIN session (see auth.py). Everywhere, two checks stop a random web page in the browser from driving the TVs:
   * the Host header must be one of our own names (blocks DNS rebinding);
   * every POST must carry the custom header X-Tvpult: 1 (a cross-site page can't
     add it without a CORS preflight, which this server never approves).
@@ -20,6 +20,7 @@ from importlib import resources
 from typing import Any
 from urllib.parse import urlsplit
 
+from .auth import LanAuth, SignInError, cookie_token, set_cookie
 from .catalog import UnknownKey
 from .devices import DeviceError, Home
 
@@ -210,8 +211,20 @@ def _page() -> bytes:
     return resources.files("tvpult").joinpath("static/index.html").read_bytes()
 
 
-def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None = None):
+def qr_data_uri(text: str) -> str:
+    """The URL as a QR code, an SVG data: URI (drawn locally, nothing fetched)."""
+    import segno
+
+    return segno.make(text, error="m").svg_data_uri(scale=5, border=2, dark="#111318", light="#ffffff")
+
+
+def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None = None,
+                 role: str = "local", auth: LanAuth | None = None, lan_url: str | None = None):
+    """role: 'local' (this computer: everything, including the PIN), 'tailnet' (Tailscale vouches for the
+    caller), or 'lan' (home network: every API call needs a PIN session)."""
     presence = presence or Presence()
+    if role == "lan" and auth is None:
+        raise ValueError("the LAN listener needs PIN sign-in")
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tvpult"
@@ -219,19 +232,21 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
         def log_message(self, fmt, *args):  # every request (a status poll each 5 s) only at debug level
             log.debug("%s %s", self.address_string(), fmt % args)
 
-        def _send(self, status: int, payload: bytes, ctype: str) -> None:
+        def _send(self, status: int, payload: bytes, ctype: str, headers: dict[str, str] | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
 
-        def _json(self, status: int, obj: Any) -> None:
+        def _json(self, status: int, obj: Any, headers: dict[str, str] | None = None) -> None:
             self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8")
+                       "application/json; charset=utf-8", headers)
 
         def _guard(self) -> bool:
             if not host_allowed(self.headers.get("Host"), allowed_hosts):
@@ -239,12 +254,35 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 return False
             return True
 
+        def _signed_in(self) -> bool:
+            """On the LAN listener every API call needs a session; elsewhere nothing extra is needed."""
+            if role != "lan":
+                return True
+            if auth.valid(cookie_token(self.headers.get("Cookie"))):
+                return True
+            self._json(HTTPStatus.UNAUTHORIZED, {"error": "pin_required"})
+            return False
+
+        def _lan_info(self) -> dict[str, Any]:
+            if auth is None or not lan_url:
+                return {"enabled": False}
+            return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
+                    "sessions": auth.sessions()}
+
         def do_GET(self):
             if not self._guard():
                 return
             path = urlsplit(self.path).path
-            if path in ("/", "/index.html"):
+            if path in ("/", "/index.html"):  # the page holds no secrets: served to everyone allowed in
                 self._send(HTTPStatus.OK, _page(), "text/html; charset=utf-8")
+                return
+            if path == "/api/lan":  # the PIN and the sessions: this computer only
+                if role != "local":
+                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    return
+                self._json(HTTPStatus.OK, self._lan_info())
+                return
+            if not self._signed_in():
                 return
             self._handle("GET", path, {})
 
@@ -266,6 +304,8 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             if path == "/api/bye":
                 # Sent by navigator.sendBeacon on page close, which can't add custom headers.
                 # Safe without X-Tvpult: it only works for a random client id that said hello.
+                if not self._signed_in():
+                    return
                 try:
                     client = json.loads(raw or b"{}").get("client")
                 except (ValueError, AttributeError):
@@ -284,6 +324,32 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                     raise ValueError
             except ValueError:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": "bad json"})
+                return
+            if path == "/api/login":
+                if role != "lan":
+                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    return
+                try:
+                    token = auth.sign_in(self.client_address[0], body.get("pin"),
+                                         label=str(self.headers.get("User-Agent", ""))[:60])
+                except SignInError as e:
+                    self._json(e.status, {"error": str(e)})
+                    return
+                self._json(HTTPStatus.OK, {"ok": True}, {"Set-Cookie": set_cookie(token)})
+                return
+            if path.startswith("/api/lan/"):  # managing phone access: this computer only
+                if role != "local" or auth is None:
+                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    return
+                if path == "/api/lan/revoke" and isinstance(body.get("id"), str):
+                    self._json(HTTPStatus.OK, {"revoked": auth.revoke(body["id"])})
+                elif path == "/api/lan/pin":
+                    auth.renew_pin()
+                    self._json(HTTPStatus.OK, self._lan_info())
+                else:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "bad request"})
+                return
+            if not self._signed_in():
                 return
             if path == "/api/hello":
                 if not presence.valid(body.get("client")):
@@ -307,20 +373,36 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
 
 
 def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None = None,
-          presence: Presence | None = None, on_ready=None) -> None:
-    """Serve until Ctrl+C — or, with presence.idle_exit, until the last page is closed."""
+          presence: Presence | None = None, on_ready=None, lan: str | None = None,
+          auth: LanAuth | None = None) -> None:
+    """Serve until Ctrl+C — or, with presence.idle_exit, until the last page is closed.
+
+    binds: 127.0.0.1 ('local') and, with --tailnet, the Tailscale address ('tailnet').
+    lan: the home-network address to listen on too — with PIN sign-in (auth) required there.
+    """
     import time
 
     presence = presence or Presence()
     allowed = {"localhost", "127.0.0.1", *binds, *(extra_names or set())}
     allowed = {a.lower() for a in allowed}
-    handler = make_handler(home, allowed, presence)
-    servers = [ThreadingHTTPServer((addr, port), handler) for addr in binds]
+    lan_url = f"http://{lan}:{port}/" if lan else None
+    servers = []
+    for addr in binds:
+        role = "local" if addr in ("127.0.0.1", "localhost") else "tailnet"
+        handler = make_handler(home, allowed, presence, role=role, auth=auth, lan_url=lan_url)
+        servers.append(ThreadingHTTPServer((addr, port), handler))
+    if lan:
+        if auth is None:
+            raise ValueError("listening on the home network needs PIN sign-in")
+        handler = make_handler(home, {lan.lower()}, presence, role="lan", auth=auth, lan_url=lan_url)
+        servers.append(ThreadingHTTPServer((lan, port), handler))
     threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
     for t in threads:
         t.start()
     for addr in binds:
         print(f"  http://{addr}:{port}/")
+    if lan:
+        print(f"  {lan_url}  — с телефона в домашней сети, PIN: {auth.pin}")
     # Devices may have moved since last time: look for any that don't answer where we left them.
     threading.Thread(target=lambda: home.status(rediscover="wait"), daemon=True).start()
     if on_ready:
