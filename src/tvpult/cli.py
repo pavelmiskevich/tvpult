@@ -42,7 +42,7 @@ def _windowless_output() -> None:
             LOG_FILE.unlink()
     except OSError:
         pass
-    stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
+    stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 — stays open for the process
     sys.stdout = sys.stdout or stream
     sys.stderr = sys.stderr or stream
 
@@ -111,9 +111,9 @@ def _our_server_running(port: int) -> bool:
 def _browser() -> str | None:
     """Edge or Chrome, to open the remote as its own app window."""
     candidates = [
-        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe",
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Google/Chrome/Application/chrome.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Google/Chrome/Application/chrome.exe",
         Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
     ]
     for c in candidates:

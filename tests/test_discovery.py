@@ -3,13 +3,12 @@
 import ipaddress
 import json
 import struct
-import time
 
 import pytest
 
 from tvpult import discovery
 from tvpult.config import Config, SoundbarConfig, TvConfig
-from tvpult.devices import DeviceError, Home, SamsungTv, CastSoundbar
+from tvpult.devices import CastSoundbar, DeviceError, Home, SamsungTv
 from tvpult.discovery import AddressBook, Found, Wanted, candidate_subnets, locate, normalize_mac, parse_arp
 from tvpult.server import ApiError, Presence, dispatch
 
@@ -336,7 +335,11 @@ def test_relocate_moves_devices_saves_and_rate_limits(tmp_path):
 
 def test_relocate_rate_limit_shared_through_address_book(tmp_path):
     calls = []
-    fake = lambda w, s, hints=None: calls.append(1) or {}
+
+    def fake(w, s, hints=None):
+        calls.append(1)
+        return {}
+
     Home(_config(), book_path=tmp_path / "a.json", locate_fn=fake).relocate()
     Home(_config(), book_path=tmp_path / "a.json", locate_fn=fake).relocate()  # another process, a moment later
     assert len(calls) == 1
