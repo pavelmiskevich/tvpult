@@ -26,11 +26,15 @@
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-copy devices.example.toml devices.toml   # впишите MAC ваших ТВ (Настройки > Об этом ТВ)
+uv run tvpult init                       # создаст devices.toml в папке пользователя и покажет где;
+                                         # впишите туда MAC ваших ТВ (Настройки > Об этом ТВ)
 uv run tvpult find                       # найти ТВ в сети
 uv run tvpult pair living                # на ТВ нажать «Разрешить»
 uv run tvpult shortcut                   # ярлык на рабочем столе
 ```
+
+Настройки и данные лежат в папке пользователя, а не рядом с кодом: `tvpult paths` покажет где
+(Windows: `%LOCALAPPDATA%\tvpult`).
 
 ## Безопасность
 

@@ -17,6 +17,16 @@ One Python process: a command line (`tvpult …`) and a small HTTP server with o
 | `wol.py` | Wake-on-LAN |
 | `icon.py` | the shortcut icon, drawn in code |
 
+## Where files live
+
+Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:
+config `devices.toml` in the config dir, data (pairing tokens, `addresses.json`, `tvpult.log`, the shortcut icon)
+in the data dir — both `%LOCALAPPDATA%\tvpult` on Windows. A missing config is a first run, not an error.
+Tests run with their own temporary directories (`tests/conftest.py`) and never touch the real ones.
+
+The desktop shortcut runs `pythonw -m tvpult app` next to the interpreter tvpult runs in — windowless, and the
+same for a source checkout and for `uv tool install`.
+
 ## Samsung specifics learnt the hard way
 
 - **samsungtvws sleeps 1 s after every key by default** (`key_press_delay`). That made a remote feel broken.

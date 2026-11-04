@@ -32,11 +32,16 @@ Needs [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 and the depen
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-copy devices.example.toml devices.toml   # put your TVs' MAC addresses there (Settings > About on the TV)
-uv run tvpult find                       # finds the TVs on your network
-uv run tvpult pair living                # press "Allow" on the TV
-uv run tvpult shortcut                   # creates the desktop shortcut
+uv run tvpult init        # creates devices.toml in your user folder and prints where it is
+                          # put your TVs' MAC addresses there (Settings > About on the TV)
+uv run tvpult find        # finds the TVs on your network
+uv run tvpult pair living # press "Allow" on the TV
+uv run tvpult shortcut    # creates the desktop shortcut
 ```
+
+Your files live in your user folder, not next to the code: `tvpult paths` shows where
+(Windows: `%LOCALAPPDATA%\tvpult`; Linux: `~/.config/tvpult` and `~/.local/share/tvpult`).
+`--config` / `--data-dir` or `TVPULT_CONFIG` / `TVPULT_DATA_DIR` override that.
 
 Then double-click the shortcut. Or run `uv run tvpult serve` and open http://127.0.0.1:8765/.
 

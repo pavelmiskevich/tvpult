@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -12,14 +13,28 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import config as paths
 from .catalog import ALLOWED_KEYS, KEY_ALIASES, UnknownKey
-from .config import DATA_DIR, DEFAULT_CONFIG, PROJECT_DIR, load_config
+from .config import init_config, load_config
 from .devices import DeviceError, Home
 
 DEFAULT_PORT = 8765
-LOG_FILE = DATA_DIR / "tvpult.log"
 LOG_MAX_BYTES = 1_000_000
 SHORTCUT_NAME = "Пульт ТВ"
+# Commands that work without any configured device.
+NO_DEVICES_NEEDED = {"keys", "shortcut", "init", "paths", "serve", "app"}
+
+
+def log_file() -> Path:
+    return paths.data_dir() / "tvpult.log"
+
+
+def _trim_log() -> None:
+    """Start the log afresh when it grows too big (missing or locked file: nothing to do)."""
+    with contextlib.suppress(OSError):
+        if log_file().stat().st_size > LOG_MAX_BYTES:
+            log_file().unlink()
+
 
 # Devices can move to any private address (see discovery), so all private ranges bypass proxies.
 _LAN_NO_PROXY = ["localhost", "127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
@@ -33,16 +48,12 @@ def _no_proxy_for_lan() -> None:
 
 
 def _windowless_output() -> None:
-    """Started without a console (desktop shortcut via uvw): print and log into a file instead."""
+    """Started without a console (desktop shortcut via pythonw): print and log into a file instead."""
     if sys.stdout is not None and sys.stderr is not None:
         return
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        if LOG_FILE.stat().st_size > LOG_MAX_BYTES:
-            LOG_FILE.unlink()
-    except OSError:
-        pass
-    stream = open(LOG_FILE, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 — stays open for the process
+    paths.data_dir().mkdir(parents=True, exist_ok=True)
+    _trim_log()
+    stream = open(log_file(), "a", encoding="utf-8", buffering=1)  # noqa: SIM115 — stays open for the process
     sys.stdout = sys.stdout or stream
     sys.stderr = sys.stderr or stream
 
@@ -132,19 +143,28 @@ def _open_remote(url: str) -> None:
         webbrowser.open(url)
 
 
+def shortcut_target(executable: str | None = None) -> tuple[str, str]:
+    """What the desktop shortcut runs: the windowless Python of *this* environment with `-m tvpult app`.
+
+    Works the same for a source checkout (`uv run`) and an installed tool (`uv tool install`), and
+    doesn't depend on where the code lives.
+    """
+    exe = Path(executable or sys.executable)
+    for name in ("pythonw.exe", "pythonw"):
+        candidate = exe.with_name(name)
+        if candidate.is_file():
+            return str(candidate), "-m tvpult app"
+    raise DeviceError(f"рядом с {exe} нет pythonw — ярлык без окна консоли сделать не из чего")
+
+
 def _make_shortcut() -> str:
     """Create «Пульт ТВ» on the desktop: starts the remote in its own window, stops when closed."""
     from .icon import write_icon
 
-    uvw = shutil.which("uvw")
-    if not uvw and shutil.which("uv"):
-        cand = Path(shutil.which("uv")).with_name("uvw.exe")
-        uvw = str(cand) if cand.is_file() else None
-    if not uvw:
-        raise DeviceError("не найден uvw.exe (ставится вместе с uv)")
-    icon = DATA_DIR / "tvpult.ico"
+    target, arguments = shortcut_target()
+    icon = paths.data_dir() / "tvpult.ico"
     write_icon(icon)
-    script = shortcut_script(uvw, PROJECT_DIR, icon)
+    script = shortcut_script(target, arguments, paths.data_dir(), icon)
     # -EncodedCommand (UTF-16LE base64): the Cyrillic name survives; a plain -Command argument
     # turned it into '?', which Windows refuses in file names.
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
@@ -162,7 +182,7 @@ def _ps_quote(value: object) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def shortcut_script(uvw: str, project: Path, icon: Path) -> str:
+def shortcut_script(target: str, arguments: str, workdir: Path, icon: Path) -> str:
     """PowerShell that creates the desktop shortcut and prints its path (UTF-8)."""
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
@@ -173,9 +193,9 @@ def shortcut_script(uvw: str, project: Path, icon: Path) -> str:
         # ASCII name, then rename with PowerShell, which handles Unicode names.
         "$tmp = Join-Path $d 'tvpult-remote.lnk'",
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($tmp)",
-        f"$s.TargetPath = {_ps_quote(uvw)}",
-        f"$s.Arguments = {_ps_quote(f'run --quiet --project \"{project}\" tvpult app')}",
-        f"$s.WorkingDirectory = {_ps_quote(project)}",
+        f"$s.TargetPath = {_ps_quote(target)}",
+        f"$s.Arguments = {_ps_quote(arguments)}",
+        f"$s.WorkingDirectory = {_ps_quote(workdir)}",
         f"$s.IconLocation = {_ps_quote(f'{icon},0')}",
         f"$s.Description = {_ps_quote('Пульт для телевизоров и саундбара')}",
         "$s.Save()",
@@ -186,7 +206,8 @@ def shortcut_script(uvw: str, project: Path, icon: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="tvpult", description="Управление телевизорами и саундбаром дома")
-    p.add_argument("--config", default=str(DEFAULT_CONFIG))
+    p.add_argument("--config", default=None, help="файл devices.toml (по умолчанию — в папке пользователя)")
+    p.add_argument("--data-dir", default=None, help="папка для ключей сопряжения, адресов, журнала")
     p.add_argument("--addresses", default=None, help=argparse.SUPPRESS)  # address book path (tests)
     p.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)  # app mode without a window (tests)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -225,19 +246,18 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument("--port", type=int, default=DEFAULT_PORT)
         s.add_argument("--tailnet", action="store_true", help="открыть ещё и в сети Tailscale")
     sub.add_parser("shortcut", help=f"создать ярлык «{SHORTCUT_NAME}» на рабочем столе")
+    sub.add_parser("init", help="создать devices.toml из примера в папке пользователя")
+    sub.add_parser("paths", help="где лежат настройки и данные")
 
     a = p.parse_args(argv)
+    paths.use_paths(a.config, a.data_dir)
     _windowless_output()
     logging.basicConfig(level=logging.INFO if (a.verbose or a.cmd == "app") else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr, force=True)
     if a.cmd == "app":  # started from the shortcut: no console to read, so always keep a log file
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        try:
-            if LOG_FILE.stat().st_size > LOG_MAX_BYTES:
-                LOG_FILE.unlink()
-        except OSError:
-            pass
-        fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+        paths.data_dir().mkdir(parents=True, exist_ok=True)
+        _trim_log()
+        fh = logging.FileHandler(log_file(), encoding="utf-8")
         fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logging.getLogger().addHandler(fh)
         logging.info("tvpult app starting (port %s)", a.port)
@@ -256,12 +276,26 @@ def main(argv: list[str] | None = None) -> int:
         except DeviceError as e:
             print(f"Ошибка: {e}", file=sys.stderr)
             return 1
+    if a.cmd == "paths":
+        print("Настройки:", paths.config_file(), "" if paths.config_file().exists() else "(ещё нет — tvpult init)")
+        print("Данные:   ", paths.data_dir())
+        return 0
+    if a.cmd == "init":
+        if init_config():
+            print("Создан", paths.config_file(), "— впиши туда MAC своих ТВ (Настройки > Об этом ТВ)")
+        else:
+            print("Уже есть", paths.config_file(), "— не трогаю")
+        return 0
     if a.cmd == "app" and _our_server_running(a.port):
         _open_remote(f"http://127.0.0.1:{a.port}/")  # already running: just show it
         return 0
 
     _no_proxy_for_lan()
-    cfg = load_config(a.config)
+    cfg = load_config()
+    if cfg.empty and a.cmd not in NO_DEVICES_NEEDED:
+        print(f"Устройства не настроены: {paths.config_file()} не найден или пуст. Начни с `tvpult init`.",
+              file=sys.stderr)
+        return 1
     home = Home(cfg, keep_alive=a.cmd in ("serve", "app"),
                 book_path=Path(a.addresses) if a.addresses else None)
     try:

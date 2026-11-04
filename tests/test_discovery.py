@@ -518,11 +518,13 @@ def test_shortcut_script_quotes_and_cyrillic():
 
     from tvpult.cli import SHORTCUT_NAME, shortcut_script
 
-    s = shortcut_script(r"C:\Users\O'Neil\uvw.exe", Path(r"C:\Proj\TV"), Path(r"C:\Proj\TV\.data\tvpult.ico"))
+    s = shortcut_script(r"C:\Users\O'Neil\.venv\Scripts\pythonw.exe", "-m tvpult app",
+                        Path(r"C:\Users\O'Neil\AppData\Local\tvpult"), Path(r"C:\Data\tvpult.ico"))
     assert "$ErrorActionPreference = 'Stop'" in s  # a failed Save() must not look like success
     assert f"'{SHORTCUT_NAME}.lnk'" in s and "Пульт" in SHORTCUT_NAME
-    assert r"'C:\Users\O''Neil\uvw.exe'" in s  # apostrophe doubled inside a PowerShell literal
-    assert r'run --quiet --project "C:\Proj\TV" tvpult app' in s
+    assert r"'C:\Users\O''Neil\.venv\Scripts\pythonw.exe'" in s  # apostrophe doubled inside a PowerShell literal
+    assert "$s.Arguments = '-m tvpult app'" in s
+    assert r"$s.WorkingDirectory = 'C:\Users\O''Neil\AppData\Local\tvpult'" in s
     assert s.strip().endswith("Write-Output $p")
 
 
