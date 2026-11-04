@@ -34,7 +34,7 @@ git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
 uv run tvpult init        # creates devices.toml in your user folder and prints where it is
                           # put your TVs' MAC addresses there (Settings > About on the TV)
-uv run tvpult find        # finds the TVs on your network
+uv run tvpult find --all  # lists every Samsung TV on your network (model, year, MAC)
 uv run tvpult pair living # press "Allow" on the TV
 uv run tvpult shortcut    # creates the desktop shortcut
 ```

@@ -28,7 +28,7 @@ git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
 uv run tvpult init                       # создаст devices.toml в папке пользователя и покажет где;
                                          # впишите туда MAC ваших ТВ (Настройки > Об этом ТВ)
-uv run tvpult find                       # найти ТВ в сети
+uv run tvpult find --all                 # все Samsung TV в сети: модель, год, MAC
 uv run tvpult pair living                # на ТВ нажать «Разрешить»
 uv run tvpult shortcut                   # ярлык на рабочем столе
 ```

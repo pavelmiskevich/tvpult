@@ -31,3 +31,9 @@ def isolated_paths(tmp_path):
     config.use_paths(tmp_path / "config" / "devices.toml", tmp_path / "data")
     yield
     config._paths = saved
+
+
+@pytest.fixture(autouse=True)
+def no_real_adapters(monkeypatch):
+    """Tests don't depend on this machine's network adapters (masks differ between machines)."""
+    monkeypatch.setattr(discovery, "adapter_addresses", lambda: [])

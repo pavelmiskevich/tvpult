@@ -48,14 +48,22 @@ Configured addresses are only a first guess. A device is recognised by what does
 Wi-Fi MAC it reports (`/api/v2/` → `wifiMac`), a Cast device by its UUID (`eureka_info` → `ssdp_udn`).
 If a device doesn't answer at its address, or something else answers there, tvpult scans:
 
-- only private networks, /24, at most 4: the laptop's own (default route), those of the last known
-  addresses, and explicitly configured ones. Never public, loopback, link-local or CGNAT (Tailscale) ranges;
+- only private networks, at most 4: the laptop's own — the adapter holding the default route, with its
+  **real mask** (from `ifaddr`), never wider than /22 (~1k addresses); the /24 of each last known address unless
+  already covered; and explicitly configured ones (/22 or smaller). VPN, WSL and Hyper-V adapters are never
+  scanned; never public, loopback, link-local or CGNAT (Tailscale) ranges;
 - ports 8001 and 8009, 0.5 s timeout, ~2 s for a /24; the last known address is retried with 1.5 s in parallel
   (a Wi-Fi device idle for a while answers its first connection slowly);
 - at most once a minute (shared between processes through the address book).
 
 SSDP/mDNS discovery was tried first; multicast replies didn't reach the test machine (firewall), while a
 /24 port scan works everywhere.
+
+**Every TV, not only configured ones** (`tvpult find --all`, and `find` with no config): the same networks,
+port 8001 only, each answer identified (model, name, model year from the platform code `22_…` → 2022).
+The ARP rule still holds: a TV whose reported MAC the network doesn't confirm is *listed* with the reason
+(cabled → add `lan_mac`; no ARP entry; different MAC → not trusted) so the user isn't left wondering — but it
+is never paired or controlled that way.
 
 ## Don't trust what a device says about itself
 

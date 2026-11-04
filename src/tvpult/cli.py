@@ -22,7 +22,20 @@ DEFAULT_PORT = 8765
 LOG_MAX_BYTES = 1_000_000
 SHORTCUT_NAME = "Пульт ТВ"
 # Commands that work without any configured device.
-NO_DEVICES_NEEDED = {"keys", "shortcut", "init", "paths", "serve", "app"}
+NO_DEVICES_NEEDED = {"keys", "shortcut", "init", "paths", "serve", "app", "find"}
+
+
+def _print_sightings(tvs: list[dict]) -> None:
+    """`find --all`: every Samsung TV seen, configured or new; unconfirmed ones with the reason."""
+    if not tvs:
+        print("Телевизоров Samsung не найдено. Включены ли они? В той же ли сети ноутбук?")
+        return
+    for t in tvs:
+        year = t["year"] or "?"
+        who = f"настроен как {t['configured']}" if t["configured"] else "новый"
+        mac = ":".join(t["mac"][i:i + 2] for i in range(0, 12, 2))
+        mark = "" if t["confirmed"] else "  ⚠ " + t["note"]
+        print(f"{t['host']:<15} {t['model'] or '?':<16} {year:<5} {mac}  {t['name']}  [{who}]{mark}")
 
 
 def log_file() -> Path:
@@ -214,7 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="что включено и что на экране")
-    sub.add_parser("find", help="найти устройства в сети (по MAC/UUID) и запомнить адреса")
+    s = sub.add_parser("find", help="найти устройства в сети (по MAC/UUID) и запомнить адреса")
+    s.add_argument("--all", action="store_true", help="показать все Samsung TV в сети, а не только настроенные")
     s = sub.add_parser("pair", help="сопрячь ТВ с ноутбуком (на ТВ нажать «Разрешить»)")
     s.add_argument("tv")
     s = sub.add_parser("on", help="включить ТВ")
@@ -303,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
             _print_status(home.status(rediscover="wait"))
         elif a.cmd == "find":
             print("Ищу устройства в сетях:", ", ".join(str(n) for n in home.subnets()) or "—")
+            if a.all or cfg.empty:
+                _print_sightings(home.scan_tvs())
+                return 0
             found = home.relocate(force=True)
             for d in home.devices():
                 where = found.get(d.cfg.id)
