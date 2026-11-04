@@ -521,7 +521,7 @@ class Home:
     """All devices from the config, at their current addresses."""
 
     def __init__(self, config: Config, keep_alive: bool = False, book_path: Path | None = None,
-                 locate_fn=None, local_ip_fn=None):
+                 locate_fn=None, local_ip_fn=None, adapters_fn=None, find_tvs_fn=None):
         self.config = config
         self.book = discovery.AddressBook.load(book_path or paths.data_dir() / "addresses.json")
         known = self.book.hosts
@@ -530,6 +530,8 @@ class Home:
         self.bars = {k: CastSoundbar(v, known.get(k)) for k, v in config.soundbars.items()}
         self._locate = locate_fn or discovery.locate
         self._local_ip = local_ip_fn or discovery.default_local_ip
+        self._adapters = adapters_fn or discovery.adapter_addresses
+        self._find_tvs = find_tvs_fn or discovery.find_tvs
         self._relocate_lock = threading.Lock()
 
     def devices(self) -> list[SamsungTv | CastSoundbar]:
@@ -556,7 +558,19 @@ class Home:
 
     def subnets(self):
         return discovery.candidate_subnets([self._local_ip()], [d.host for d in self.devices()],
-                                           self.config.scan_subnets)
+                                           self.config.scan_subnets, self._adapters())
+
+    def scan_tvs(self) -> list[dict[str, Any]]:
+        """Every Samsung TV on the network, configured or not (for `find --all` and the setup wizard).
+
+        Each entry says which configured TV it is (`configured`: id or None).
+        """
+        by_mac = {discovery.normalize_mac(t.cfg.mac): t.cfg.id for t in self.tvs.values() if t.cfg.mac}
+        out = []
+        for s in self._find_tvs(self.subnets()):
+            out.append({"host": s.host, "mac": s.mac, "model": s.model, "name": s.name, "year": s.year,
+                        "confirmed": s.confirmed, "note": s.note, "configured": by_mac.get(s.mac)})
+        return out
 
     def relocate(self, force: bool = False) -> dict[str, discovery.Found]:
         """Search the network for the devices and move them to where they are now.

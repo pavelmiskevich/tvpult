@@ -40,7 +40,7 @@ _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 
 # --- identifiers ----------------------------------------------------------------
 def normalize_mac(mac: str | None) -> str:
-    """'02:00:00:00:55:01', '02:00:00:00:55:01', '02:00:00:00:55:01' -> '02:00:00:00:55:01'; anything else -> ''."""
+    """'02:00:00:00:55:01', '02-00-00-00-55-01', '020000005501' -> '020000005501'; anything else -> ''."""
     hexes = re.sub(r"[^0-9a-fA-F]", "", mac or "").lower()
     if len(hexes) != 12 or hexes == "000000000000":
         return ""
@@ -66,21 +66,66 @@ def default_local_ip() -> str | None:
         return None
 
 
+MIN_PREFIX = 22  # never scan more than ~1k addresses in one network, whatever its real mask
+
+
+def adapter_addresses() -> list[tuple[str, int]]:
+    """(IPv4 address, prefix length) of every network adapter of this machine; [] if unknown."""
+    return read_adapters()
+
+
+def read_adapters(get_adapters: Callable[[], Iterable[Any]] | None = None) -> list[tuple[str, int]]:
+    try:
+        if get_adapters is None:
+            import ifaddr
+
+            get_adapters = ifaddr.get_adapters
+        return [(ip.ip, ip.network_prefix) for a in get_adapters() for ip in a.ips if isinstance(ip.ip, str)]
+    except Exception:  # no adapter info: callers fall back to /24
+        log.debug("adapter list unavailable", exc_info=True)
+        return []
+
+
+def local_network(local_ip: str, adapters: Iterable[tuple[str, int]]) -> ipaddress.IPv4Network:
+    """The real network of the adapter holding local_ip (mask from the adapter), at most /MIN_PREFIX wide.
+
+    Falls back to /24 when the adapter isn't known.
+    """
+    for ip, prefix in adapters:
+        if ip == local_ip and 0 < prefix <= 32:
+            return ipaddress.IPv4Network(f"{ip}/{max(prefix, MIN_PREFIX)}", strict=False)
+    return ipaddress.IPv4Network(f"{local_ip}/24", strict=False)
+
+
 def candidate_subnets(local_ips: Iterable[str | None], known_hosts: Iterable[str],
-                      extra: Iterable[str] = ()) -> list[ipaddress.IPv4Network]:
-    """Private /24 networks to scan, most likely first, without duplicates, at most MAX_SUBNETS."""
+                      extra: Iterable[str] = (),
+                      adapters: Iterable[tuple[str, int]] | None = None) -> list[ipaddress.IPv4Network]:
+    """Private networks to scan, most likely first, at most MAX_SUBNETS.
+
+    * the laptop's own network(s) with their real mask (adapters), capped at /MIN_PREFIX — only the
+      adapter that holds the given local address, so VPN / WSL / Hyper-V adapters are never scanned;
+    * the /24 of each last known device address, unless already covered;
+    * explicitly configured networks (private, /MIN_PREFIX or smaller).
+    """
+    adapters = list(adapters or [])
     nets: list[ipaddress.IPv4Network] = []
 
     def add(net: ipaddress.IPv4Network) -> None:
-        if net not in nets and len(nets) < MAX_SUBNETS:
+        if len(nets) < MAX_SUBNETS and not any(net.subnet_of(n) for n in nets):
             nets.append(net)
 
-    for value in [*local_ips, *known_hosts]:
+    def private(value: str | None) -> str | None:
         try:
             ip = ipaddress.IPv4Address(value or "")
         except ValueError:
-            continue
-        if is_private_lan(ip):
+            return None
+        return str(ip) if is_private_lan(ip) else None
+
+    for value in local_ips:
+        if ip := private(value):
+            add(local_network(ip, adapters))
+    for value in known_hosts:
+        if ip := private(value):
             add(ipaddress.IPv4Network(f"{ip}/24", strict=False))
     for value in extra:
         try:
@@ -88,8 +133,8 @@ def candidate_subnets(local_ips: Iterable[str | None], known_hosts: Iterable[str
         except ValueError:
             log.warning("scan_subnets: not a network: %r", value)
             continue
-        if net.num_addresses > 256 or not is_private_lan(net.network_address):
-            log.warning("scan_subnets: %s skipped (only private networks of /24 or smaller)", net)
+        if net.prefixlen < MIN_PREFIX or not is_private_lan(net.network_address):
+            log.warning("scan_subnets: %s skipped (only private networks of /%d or smaller)", net, MIN_PREFIX)
             continue
         add(net)
     return nets
@@ -124,17 +169,74 @@ def _http() -> requests.Session:
     return s
 
 
-def identify_tv(host: str, http: requests.Session | None = None) -> dict[str, str] | None:
-    """{'mac', 'model', 'name'} of the Samsung TV at host, or None."""
+def model_year(platform_model: str | None) -> int | None:
+    """Samsung's platform code starts with the model year: '22_PONTUSM_QTV' -> 2022, '17_KANTS_FHD' -> 2017."""
+    m = re.match(r"^(\d{2})_", platform_model or "")
+    return 2000 + int(m.group(1)) if m else None
+
+
+def identify_tv(host: str, http: requests.Session | None = None) -> dict[str, Any] | None:
+    """What the Samsung TV at host says about itself (mac, model, name, year, wired), or None."""
     try:
         r = (http or _http()).get(f"http://{host}:{TV_PORT}/api/v2/", timeout=2)
         dev = r.json().get("device", {}) if r.ok else {}
-    except (requests.RequestException, ValueError):
+    except (requests.RequestException, ValueError, AttributeError):
         return None
     mac = normalize_mac(dev.get("wifiMac"))
     if not mac:
         return None
-    return {"mac": mac, "model": str(dev.get("modelName", "")), "name": str(dev.get("name", ""))}
+    return {"mac": mac, "model": str(dev.get("modelName", "")), "name": str(dev.get("name", "")),
+            "year": model_year(dev.get("model")), "wired": dev.get("networkType") == "wired"}
+
+
+@dataclass
+class TvSighting:
+    """A Samsung TV seen on the network during a full scan."""
+
+    host: str
+    mac: str  # the Wi-Fi MAC the TV reports
+    model: str
+    name: str
+    year: int | None
+    confirmed: bool  # ARP agrees with the reported MAC — only then may it be paired or used
+    note: str = ""
+
+
+def find_tvs(subnets: list[ipaddress.IPv4Network], *,
+             scan_fn: Callable[..., list[tuple[str, int]]] | None = None,
+             identify_tv_fn: Callable[[str], dict[str, Any] | None] | None = None,
+             arp_fn: Callable[[], dict[str, str]] | None = None) -> list[TvSighting]:
+    """Every Samsung TV answering in the subnets, configured or not, sorted by address.
+
+    A TV whose reported MAC the ARP table doesn't confirm is still listed — with confirmed=False and
+    the reason — so the user sees it instead of wondering; it is never paired or used that way.
+    """
+    # Looked up at call time (module globals), so tests can replace them.
+    scan_fn = scan_fn or scan
+    identify_tv_fn = identify_tv_fn or identify_tv
+    arp_fn = arp_fn or read_arp
+    hosts = [h for h, p in scan_fn(subnets, (TV_PORT,)) if p == TV_PORT]
+    if not hosts:
+        return []
+    arp_by_ip = {ip: mac for mac, ip in arp_fn().items()}
+    seen: list[TvSighting] = []
+    for host in hosts:
+        ident = identify_tv_fn(host)
+        if not ident:
+            continue  # something else listens on 8001
+        arp_mac = arp_by_ip.get(host, "")
+        confirmed = arp_mac == ident["mac"]
+        note = ""
+        if not confirmed:
+            if ident.get("wired") and arp_mac:
+                note = "connected by cable: the network shows its Ethernet MAC — add it as lan_mac to confirm"
+            elif not arp_mac:
+                note = "the network didn't confirm its MAC (no ARP entry)"
+            else:
+                note = "the MAC it reports differs from the one the network sees — not trusted"
+        seen.append(TvSighting(host, ident["mac"], ident["model"], ident["name"], ident.get("year"),
+                               confirmed, note))
+    return sorted(seen, key=lambda t: ipaddress.IPv4Address(t.host))
 
 
 def identify_cast(host: str, http: requests.Session | None = None) -> str | None:

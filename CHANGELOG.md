@@ -5,6 +5,9 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- `tvpult find --all` (and `find` with no config) lists every Samsung TV on the network — model, year, MAC,
+  whether it is configured; TVs the ARP table does not confirm are shown with the reason. The laptop's network is
+  scanned with its real mask (capped at /22); VPN, WSL and Hyper-V adapters are never scanned. (#2)
 - Config and data (pairing tokens, addresses, log) live in the user's directories (`platformdirs`), not next
   to the code; `tvpult init` creates the config from the shipped example, `tvpult paths` shows where things are;
   `--config` / `--data-dir` and `TVPULT_CONFIG` / `TVPULT_DATA_DIR` override. (#1)
