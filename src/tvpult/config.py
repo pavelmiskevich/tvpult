@@ -1,14 +1,70 @@
-"""Device configuration loaded from devices.toml."""
+"""Device configuration (devices.toml) and where tvpult keeps its files.
+
+Files live in the user's directories, never next to the code (which may sit in site-packages):
+  * config — devices.toml in the user config dir (Windows: %LOCALAPPDATA%\\tvpult, Linux: ~/.config/tvpult);
+  * data — pairing tokens, remembered addresses, log, shortcut icon in the user data dir
+    (Windows: %LOCALAPPDATA%\\tvpult, Linux: ~/.local/share/tvpult).
+Overrides, strongest first: CLI flags (use_paths), then TVPULT_CONFIG / TVPULT_DATA_DIR.
+"""
 
 from __future__ import annotations
 
+import os
+import shutil
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = PROJECT_DIR / "devices.toml"
-DATA_DIR = PROJECT_DIR / ".data"
+from platformdirs import user_config_path, user_data_path
+
+APP = "tvpult"
+PACKAGE_DIR = Path(__file__).resolve().parent
+EXAMPLE_CONFIG = PACKAGE_DIR / "devices.example.toml"  # shipped inside the package
+
+
+@dataclass(frozen=True)
+class Paths:
+    config_file: Path
+    data_dir: Path
+
+
+def default_paths(env: Mapping[str, str] = os.environ) -> Paths:
+    config = env.get("TVPULT_CONFIG")
+    data = env.get("TVPULT_DATA_DIR")
+    return Paths(
+        config_file=Path(config) if config else user_config_path(APP, appauthor=False, roaming=False) / "devices.toml",
+        data_dir=Path(data) if data else user_data_path(APP, appauthor=False, roaming=False),
+    )
+
+
+_paths = default_paths()
+
+
+def use_paths(config_file: Path | str | None = None, data_dir: Path | str | None = None) -> Paths:
+    """Override where the config and the data are (CLI flags, tests)."""
+    global _paths
+    _paths = Paths(Path(config_file) if config_file else _paths.config_file,
+                   Path(data_dir) if data_dir else _paths.data_dir)
+    return _paths
+
+
+def config_file() -> Path:
+    return _paths.config_file
+
+
+def data_dir() -> Path:
+    return _paths.data_dir
+
+
+def init_config(path: Path | None = None) -> bool:
+    """Create the config from the shipped example. False if it already exists (never overwritten)."""
+    path = path or config_file()
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(EXAMPLE_CONFIG, path)
+    return True
 
 
 @dataclass(frozen=True)
@@ -26,7 +82,7 @@ class TvConfig:
 
     @property
     def token_file(self) -> Path:
-        return DATA_DIR / f"token-{self.id}.txt"
+        return data_dir() / f"token-{self.id}.txt"
 
 
 @dataclass(frozen=True)
@@ -48,9 +104,17 @@ class Config:
     wifi_names: dict[str, str] = field(default_factory=dict)  # BSSID (lowercase) -> label
     scan_subnets: list[str] = field(default_factory=list)  # extra private /24 networks to search
 
+    @property
+    def empty(self) -> bool:
+        return not self.tvs and not self.soundbars
 
-def load_config(path: Path = DEFAULT_CONFIG) -> Config:
-    raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+
+def load_config(path: Path | None = None) -> Config:
+    """Read the config; a missing file is an empty config (first run), not an error."""
+    path = Path(path) if path else config_file()
+    if not path.exists():
+        return Config()
+    raw = tomllib.loads(path.read_text(encoding="utf-8"))
     tvs = {
         tv_id: TvConfig(
             id=tv_id,
