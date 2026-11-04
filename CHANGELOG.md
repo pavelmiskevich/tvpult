@@ -5,6 +5,10 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- First-run setup wizard in the remote page: with nothing configured it finds every Samsung TV, lets you name
+  each one and connect it (press Allow on the TV); the TV is added to `devices.toml` only after the TV agreed,
+  appending a section and leaving everything else in the file untouched. More TVs later via the "+ ТВ" tab.
+  Pairing accepts only candidates from the server's own last scan, and only ARP-confirmed ones. (#3)
 - `tvpult find --all` (and `find` with no config) lists every Samsung TV on the network — model, year, MAC,
   whether it is configured; TVs the ARP table does not confirm are shown with the reason. The laptop's network is
   scanned with its real mask (capped at /22); VPN, WSL and Hyper-V adapters are never scanned. (#2)

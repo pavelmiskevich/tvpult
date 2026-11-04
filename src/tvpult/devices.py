@@ -306,8 +306,11 @@ class SamsungTv:
                          name=REMOTE_NAME, timeout=timeout)
         try:
             tv.open()
+        except Exception as e:  # declined, timed out, connection dropped — all mean "not paired"
+            raise DeviceError(f"{self.cfg.name}: not allowed on the TV ({e})") from e
         finally:
-            tv.close()
+            with contextlib.suppress(Exception):
+                tv.close()
         if not self.cfg.token_file.exists():
             raise DeviceError("the TV did not issue a token (prompt declined or timed out)")
 
@@ -533,9 +536,58 @@ class Home:
         self._adapters = adapters_fn or discovery.adapter_addresses
         self._find_tvs = find_tvs_fn or discovery.find_tvs
         self._relocate_lock = threading.Lock()
+        self._keep_alive = keep_alive
+        self._candidates: dict[str, dict[str, Any]] = {}
+        self._setup_lock = threading.Lock()
 
     def devices(self) -> list[SamsungTv | CastSoundbar]:
         return [*self.tvs.values(), *self.bars.values()]
+
+    # --- setup wizard -------------------------------------------------------------
+    @property
+    def setup_needed(self) -> bool:
+        return self.config.empty
+
+    def setup_scan(self) -> list[dict[str, Any]]:
+        """Find every TV for the wizard; each gets a short candidate id (`cid`) for setup_pair.
+
+        Pairing later accepts only these ids — never an address from the page.
+        """
+        found = self.scan_tvs()
+        candidates = {f"c{i}": t for i, t in enumerate(found, 1)}
+        self._candidates = candidates
+        return [{**t, "cid": cid} for cid, t in candidates.items()]
+
+    def setup_pair(self, cid: str, name: str, timeout: float = 45) -> dict[str, Any]:
+        """Pair a candidate from the last scan, then add it to devices.toml (only after the TV said yes)."""
+        t = self._candidates.get(cid)
+        if t is None:
+            raise DeviceError("this TV is not in the last search — search again")
+        if t["configured"]:
+            return {"id": t["configured"], "already": True}
+        if not t["confirmed"]:
+            raise DeviceError(t["note"] or "the network did not confirm this TV's MAC")
+        if not self._setup_lock.acquire(blocking=False):
+            raise DeviceError("another TV is being connected right now")
+        try:
+            name = " ".join(name.split())[:40] or t["model"] or "TV"
+            tv_id = paths.slugify(name, taken={*self.tvs, *self.bars})
+            mac = ":".join(t["mac"][i:i + 2] for i in range(0, 12, 2))
+            cfg = TvConfig(id=tv_id, name=name, host=t["host"], mac=mac,
+                           # an assumption: our 2017 set didn't wake over Wi-Fi; editable in settings
+                           wake_on_lan=(t["year"] or 0) >= 2018)
+            tv = SamsungTv(cfg, self.config.extra_apps, self.config.wifi_names, self._keep_alive)
+            tv.pair(timeout)  # the TV asks "Allow?"; DeviceError if declined / timed out
+            paths.add_tv_to_config(cfg)
+            self.config.tvs[tv_id] = cfg
+            self.tvs[tv_id] = tv
+            t["configured"] = tv_id
+            self.book.hosts[tv_id] = cfg.host
+            with contextlib.suppress(OSError):
+                self.book.save()
+            return {"id": tv_id, "already": False}
+        finally:
+            self._setup_lock.release()
 
     def tv(self, tv_id: str) -> SamsungTv:
         try:

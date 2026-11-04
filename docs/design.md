@@ -17,6 +17,17 @@ One Python process: a command line (`tvpult …`) and a small HTTP server with o
 | `wol.py` | Wake-on-LAN |
 | `icon.py` | the shortcut icon, drawn in code |
 
+## Setup wizard
+
+With nothing configured the page opens a setup screen instead of an empty remote (later: the "+ ТВ" tab).
+`POST /api/setup/scan` runs the full scan (#2) and gives each TV a short candidate id; `POST /api/setup/pair`
+takes **only such an id** — the page can never make the server connect to an address of its choosing — and only
+for ARP-confirmed TVs. One pairing at a time. The TV is written to `devices.toml` only after it said yes: a new
+`[tv.<id>]` section is appended (id from the name, transliterated: «Гостиная» → `gostinaya`), the rest of the
+file stays byte-for-byte as it was, and the result is re-read — if it doesn't parse, the old file comes back.
+Names reach the page only as text (`textContent`), never as HTML. Wake-on-LAN defaults to on for model year
+2018+ — an assumption (a 2017 set didn't wake over Wi-Fi), editable later.
+
 ## Where files live
 
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:
