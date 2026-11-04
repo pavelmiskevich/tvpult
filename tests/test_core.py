@@ -53,9 +53,9 @@ def test_subnet_broadcast():
 
 # --- config -------------------------------------------------------------------
 def test_example_config_loads():
-    from tvpult.config import PROJECT_DIR
+    from tvpult.config import EXAMPLE_CONFIG
 
-    cfg = load_config(PROJECT_DIR / "devices.example.toml")
+    cfg = load_config(EXAMPLE_CONFIG)
     assert set(cfg.tvs) == {"living", "bedroom"}
     assert cfg.tvs["living"].wake_on_lan and not cfg.tvs["bedroom"].wake_on_lan
     assert cfg.tvs["living"].token_file.name == "token-living.txt"
@@ -311,7 +311,7 @@ def test_warm_up_only_when_keep_alive(tmp_path, monkeypatch):
     from tvpult.config import TvConfig
     from tvpult.devices import SamsungTv
 
-    monkeypatch.setattr(config_mod, "DATA_DIR", tmp_path)
+    config_mod.use_paths(data_dir=tmp_path)
     (tmp_path / "token-t.txt").write_text("x")
     opened = []
     for keep in (False, True):

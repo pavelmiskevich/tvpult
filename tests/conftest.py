@@ -20,3 +20,14 @@ def no_real_network(monkeypatch):
     monkeypatch.setattr(discovery, "read_arp", boom)
     monkeypatch.setattr(requests.Session, "request", boom)
     monkeypatch.setattr(samsungtvws, "SamsungTVWS", boom)
+
+
+@pytest.fixture(autouse=True)
+def isolated_paths(tmp_path):
+    """Every test gets its own config and data directories: nothing touches the real user folders."""
+    from tvpult import config
+
+    saved = config._paths
+    config.use_paths(tmp_path / "config" / "devices.toml", tmp_path / "data")
+    yield
+    config._paths = saved

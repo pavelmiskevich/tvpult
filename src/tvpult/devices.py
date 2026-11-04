@@ -22,7 +22,8 @@ import requests
 
 from . import discovery
 from .catalog import app_catalog, normalize_key
-from .config import DATA_DIR, Config, SoundbarConfig, TvConfig
+from . import config as paths
+from .config import Config, SoundbarConfig, TvConfig
 from .wol import send_wol, subnet_broadcast
 
 log = logging.getLogger(__name__)
@@ -244,7 +245,7 @@ class SamsungTv:
         from samsungtvws import SamsungTVWS
 
         if self._ws is None:
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            paths.data_dir().mkdir(parents=True, exist_ok=True)
             # key_press_delay defaults to 1 s *after every key* in samsungtvws — that
             # was the remote's lag. We space multi-key sequences ourselves instead.
             self._ws = SamsungTVWS(
@@ -300,7 +301,7 @@ class SamsungTv:
         from samsungtvws import SamsungTVWS
 
         self._require_online()
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        paths.data_dir().mkdir(parents=True, exist_ok=True)
         tv = SamsungTVWS(host=self.host, port=8002, token_file=str(self.cfg.token_file),
                          name=REMOTE_NAME, timeout=timeout)
         try:
@@ -522,7 +523,7 @@ class Home:
     def __init__(self, config: Config, keep_alive: bool = False, book_path: Path | None = None,
                  locate_fn=None, local_ip_fn=None):
         self.config = config
-        self.book = discovery.AddressBook.load(book_path or DATA_DIR / "addresses.json")
+        self.book = discovery.AddressBook.load(book_path or paths.data_dir() / "addresses.json")
         known = self.book.hosts
         self.tvs = {k: SamsungTv(v, config.extra_apps, config.wifi_names, keep_alive, known.get(k))
                     for k, v in config.tvs.items()}
