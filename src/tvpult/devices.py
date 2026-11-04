@@ -8,6 +8,7 @@ to whatever else happens to answer at an old address.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import socket
 import threading
@@ -92,10 +93,8 @@ class SamsungTv:
             if host == self.host:
                 return
             if self._ws is not None:
-                try:
+                with contextlib.suppress(Exception):  # already broken: closing may fail, that's fine
                     self._ws.close()
-                except Exception:
-                    pass
             self._ws = None
             self.host = host
             self._apps, self._apps_at = None, 0.0
@@ -283,11 +282,9 @@ class SamsungTv:
                     return fn(self._remote())
                 except Exception as e:  # dropped socket: reconnect once
                     log.warning("remote %s failed (attempt %d): %s", self.cfg.id, attempt, e)
-                    try:
-                        if self._ws is not None:
+                    if self._ws is not None:
+                        with contextlib.suppress(Exception):
                             self._ws.close()
-                    except Exception:
-                        pass
                     self._ws = None
                     if attempt == 2:
                         raise DeviceError(f"{self.cfg.name}: {e}") from e
@@ -408,10 +405,8 @@ class CastSoundbar:
             if host == self.host:
                 return
             if self._cc is not None:
-                try:
+                with contextlib.suppress(Exception):
                     self._cc.disconnect(timeout=2)
-                except Exception:
-                    pass
             self._cc = None
             self.host = host
             self._identity.reset()
@@ -460,11 +455,9 @@ class CastSoundbar:
                     return fn(self._cast())
                 except Exception as e:
                     log.warning("cast %s failed (attempt %d): %s", self.cfg.id, attempt, e)
-                    try:
-                        if self._cc is not None:
+                    if self._cc is not None:
+                        with contextlib.suppress(Exception):
                             self._cc.disconnect(timeout=2)
-                    except Exception:
-                        pass
                     self._cc = None
                     if attempt == 2:
                         raise DeviceError(f"{self.cfg.name}: {e}") from e
@@ -614,10 +607,9 @@ class Home:
         missing = any(not r.get("online") for r in result)
         if missing and rediscover == "background":
             self.relocate_in_background()
-        elif missing and rediscover == "wait":
-            if self.relocate():
-                with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
-                    result = list(ex.map(lambda d: d.status(), devs))
+        elif missing and rediscover == "wait" and self.relocate():
+            with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
+                result = list(ex.map(lambda d: d.status(), devs))
         return result
 
     def close(self) -> None:

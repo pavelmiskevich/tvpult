@@ -36,7 +36,23 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+ignore = [
+    "S101",  # assert is how pytest checks
+    "S603", "S607",  # subprocess with fixed argument lists (arp, powershell, tailscale, browser)
+    "S104",  # binding addresses come from the user (--tailnet), never 0.0.0.0 by default
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B"]

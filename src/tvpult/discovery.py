@@ -115,7 +115,7 @@ def scan(subnets: Iterable[ipaddress.IPv4Network], ports: Iterable[int],
         return []
     with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as ex:
         hits = ex.map(lambda t: connect(*t), targets)
-        return [t for t, ok in zip(targets, hits) if ok]
+        return [t for t, ok in zip(targets, hits, strict=True) if ok]
 
 
 def _http() -> requests.Session:
@@ -281,7 +281,7 @@ class AddressBook:
     scanned_at: float = 0.0
 
     @classmethod
-    def load(cls, path: Path) -> "AddressBook":
+    def load(cls, path: Path) -> AddressBook:
         try:
             raw: Any = json.loads(Path(path).read_text(encoding="utf-8"))
             hosts = {str(k): str(v) for k, v in dict(raw.get("hosts", {})).items()}

@@ -318,5 +318,7 @@ def test_warm_up_only_when_keep_alive(tmp_path, monkeypatch):
         tv = SamsungTv(TvConfig(id="t", name="T", host="0.0.0.0"), keep_alive=keep)
         tv._remote = lambda: opened.append(keep) or type("R", (), {"open": lambda self: None})()
         tv.warm_up()
-    import time; time.sleep(0.2)
+    import time
+
+    time.sleep(0.2)
     assert opened == [True]  # one-shot CLI commands never open the remote channel

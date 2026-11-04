@@ -1,5 +1,7 @@
 # tvpult
 
+[![CI](https://github.com/pavelmiskevich/tvpult/actions/workflows/ci.yml/badge.svg)](https://github.com/pavelmiskevich/tvpult/actions/workflows/ci.yml)
+
 **A local remote for Samsung Smart TVs.** Finds your TVs on the home network and controls them from a
 browser window — no cloud, no account, no app store. Double-click a desktop shortcut to open it; close the
 window and it stops.
