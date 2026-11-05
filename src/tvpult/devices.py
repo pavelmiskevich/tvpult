@@ -9,6 +9,7 @@ to whatever else happens to answer at an old address.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import logging
 import socket
 import threading
@@ -32,6 +33,7 @@ REMOTE_NAME = "tvpult"
 APP_CACHE_SECONDS = 600
 IDENTITY_CACHE_SECONDS = 60
 RESCAN_SECONDS = 60
+SEARCH_SECONDS = 10  # a search asked for by hand (settings page)
 
 
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
@@ -209,7 +211,7 @@ class SamsungTv:
         out: dict[str, Any] = {
             "id": self.cfg.id, "kind": "tv", "name": self.cfg.name, "host": self.host,
             "online": False, "power": "off", "paired": self.cfg.token_file.exists(),
-            "wake_on_lan": self.cfg.wake_on_lan,
+            "wake_on_lan": self.cfg.wake_on_lan, "has_mac": bool(self.cfg.mac),
         }
         if not _port_open(self.host, 8001):
             return out
@@ -520,6 +522,20 @@ class CastSoundbar:
                     self._cc = None
 
 
+@contextlib.contextmanager
+def _try_lock(lock: threading.Lock, busy: str):
+    """Hold the lock, or refuse right away (DeviceError) if someone else holds it."""
+    if not lock.acquire(blocking=False):
+        raise DeviceError(busy)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+PAIRING_BUSY = "another TV is being connected right now"
+
+
 class Home:
     """All devices from the config, at their current addresses."""
 
@@ -538,7 +554,8 @@ class Home:
         self._relocate_lock = threading.Lock()
         self._keep_alive = keep_alive
         self._candidates: dict[str, dict[str, Any]] = {}
-        self._setup_lock = threading.Lock()
+        self._setup_lock = threading.Lock()  # one pairing at a time (wizard and re-pairing)
+        self._config_lock = threading.Lock()  # one writer of devices.toml at a time
 
     def devices(self) -> list[SamsungTv | CastSoundbar]:
         return [*self.tvs.values(), *self.bars.values()]
@@ -578,7 +595,8 @@ class Home:
                            wake_on_lan=(t["year"] or 0) >= 2018)
             tv = SamsungTv(cfg, self.config.extra_apps, self.config.wifi_names, self._keep_alive)
             tv.pair(timeout)  # the TV asks "Allow?"; DeviceError if declined / timed out
-            paths.add_tv_to_config(cfg)
+            with self._config_lock:
+                paths.add_tv_to_config(cfg)
             self.config.tvs[tv_id] = cfg
             self.tvs[tv_id] = tv
             t["configured"] = tv_id
@@ -588,6 +606,99 @@ class Home:
             return {"id": tv_id, "already": False}
         finally:
             self._setup_lock.release()
+
+    # --- settings page ------------------------------------------------------------------
+    def _device(self, kind: str, dev_id: str) -> SamsungTv | CastSoundbar:
+        if kind == "tv":
+            return self.tv(dev_id)
+        if kind == "soundbar":
+            return self.bar(dev_id)
+        raise DeviceError(f"unknown device kind: {kind}")
+
+    def _write_config(self, fn, *args, **kwargs) -> None:
+        """Change devices.toml; a config error becomes a DeviceError and the file stays as it was."""
+        with self._config_lock:
+            try:
+                fn(*args, **kwargs)
+            except (KeyError, ValueError, OSError) as e:
+                raise DeviceError(f"devices.toml not changed: {e}") from e
+
+    def update_device(self, kind: str, dev_id: str, name: str | None = None,
+                      wake_on_lan: bool | None = None) -> dict[str, Any]:
+        """Rename a device and/or switch a TV's Wake-on-LAN; saved to devices.toml."""
+        dev = self._device(kind, dev_id)
+        if wake_on_lan and not dev.cfg.mac:
+            raise DeviceError(f"{dev.cfg.name}: no MAC address known, Wake-on-LAN can't work")
+        self._write_config(paths.update_device, kind, dev_id, name=name, wake_on_lan=wake_on_lan)
+        changes: dict[str, Any] = {}
+        if name is not None:
+            changes["name"] = paths.clean_name(name)
+        if wake_on_lan is not None:
+            changes["wake_on_lan"] = bool(wake_on_lan)
+        dev.cfg = dataclasses.replace(dev.cfg, **changes)
+        (self.config.tvs if kind == "tv" else self.config.soundbars)[dev_id] = dev.cfg
+        return {"id": dev_id, **changes}
+
+    def remove_device(self, kind: str, dev_id: str) -> dict[str, Any]:
+        """Forget a device: its section in devices.toml, its pairing token and its remembered address."""
+        dev = self._device(kind, dev_id)
+        self._write_config(paths.remove_device, kind, dev_id)
+        with contextlib.suppress(Exception):
+            dev.close()
+        if kind == "tv":
+            self.tvs.pop(dev_id, None)
+            self.config.tvs.pop(dev_id, None)
+            dev.cfg.token_file.unlink(missing_ok=True)
+        else:
+            self.bars.pop(dev_id, None)
+            self.config.soundbars.pop(dev_id, None)
+        self._candidates = {}  # the last search's "already connected" marks are stale now
+        if self.book.hosts.pop(dev_id, None) is not None:
+            with contextlib.suppress(OSError):
+                self.book.save()
+        return {"removed": dev_id}
+
+    def unpair(self, tv_id: str) -> dict[str, Any]:
+        """Forget the TV's pairing token. The TV keeps tvpult in its own device list until removed there."""
+        tv = self.tv(tv_id)
+        with _try_lock(self._setup_lock, PAIRING_BUSY):
+            try:
+                tv.close()
+            finally:
+                had = tv.cfg.token_file.exists()
+                tv.cfg.token_file.unlink(missing_ok=True)
+        return {"id": tv_id, "unpaired": had}
+
+    def repair(self, tv_id: str, timeout: float = 45) -> dict[str, Any]:
+        """Pair a configured TV again (the TV may ask "Allow?"). If that fails, the old token comes back."""
+        tv = self.tv(tv_id)
+        with _try_lock(self._setup_lock, PAIRING_BUSY):
+            token = tv.cfg.token_file
+            old = token.read_bytes() if token.exists() else None
+            tv.close()
+            token.unlink(missing_ok=True)
+            try:
+                tv.pair(timeout)
+            except Exception:
+                if old is not None and not token.exists():
+                    token.write_bytes(old)
+                raise
+        return {"id": tv_id, "paired": True}
+
+    def set_quick_apps(self, aliases: list[str]) -> list[str]:
+        """The quick-launch row (app aliases, in order); saved to devices.toml."""
+        self._write_config(paths.set_quick_apps, aliases)
+        self.config.quick_apps[:] = list(dict.fromkeys(aliases))
+        return list(self.config.quick_apps)
+
+    def search(self) -> dict[str, str] | None:
+        """"Search again" from the settings: look for every device now.
+
+        At most once per SEARCH_SECONDS: None means "searched a moment ago, not again yet".
+        """
+        if time.time() - self.book.scanned_at < SEARCH_SECONDS:
+            return None
+        return {dev_id: f.host for dev_id, f in self.relocate(force=True).items()}
 
     def tv(self, tv_id: str) -> SamsungTv:
         try:

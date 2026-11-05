@@ -22,12 +22,14 @@ from urllib.parse import urlsplit
 
 from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey
+from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
 from .devices import DeviceError, Home
 
 log = logging.getLogger(__name__)
 
 _ROUTE = re.compile(r"^/api/(tv|bar)/([A-Za-z0-9_-]+)/([a-z]+)$")
 MAX_BODY = 16 * 1024
+_DEV_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
 class ApiError(Exception):
@@ -56,6 +58,11 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
             return home.setup_pair(cid, name)
         except DeviceError as e:
             raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
+    if path.startswith("/api/settings/"):
+        try:
+            return _settings(home, path.removeprefix("/api/settings/"), body)
+        except DeviceError as e:
+            raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
     m = _ROUTE.match(path)
     if not m:
         raise ApiError(HTTPStatus.NOT_FOUND, "not found")
@@ -69,6 +76,38 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
             except DeviceError as e:
                 raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
         raise ApiError(HTTPStatus.CONFLICT, str(first)) from first
+
+
+def _settings(home: Home, action: str, body: dict[str, Any]) -> Any:
+    """The settings page: everything that used to need editing devices.toml by hand."""
+    if action == "quick":
+        apps = body.get("apps")
+        if (not isinstance(apps, list) or len(apps) > MAX_QUICK_APPS
+                or not all(isinstance(a, str) and APP_ALIAS.fullmatch(a) for a in apps)):
+            raise ApiError(HTTPStatus.BAD_REQUEST, f"apps: a list of up to {MAX_QUICK_APPS} app names")
+        return {"quick": home.set_quick_apps(apps)}
+    if action == "search":
+        found = home.search()
+        return {"found": found or {}, "recent": found is None}
+    if action not in ("device", "remove", "unpair", "pair"):
+        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+    kind, dev_id = body.get("kind"), body.get("id")
+    if kind not in SECTIONS or not isinstance(dev_id, str) or not _DEV_ID.fullmatch(dev_id):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "kind (tv or soundbar) and id required")
+    if action == "remove":
+        return home.remove_device(kind, dev_id)
+    if action == "device":
+        name, wol = body.get("name"), body.get("wake_on_lan")
+        if name is not None and (not isinstance(name, str) or not clean_name(name) or len(name) > 40):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "name must be text, 1-40 characters")
+        if wol is not None and (not isinstance(wol, bool) or kind != "tv"):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "wake_on_lan must be true or false, TVs only")
+        if name is None and wol is None:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "nothing to change")
+        return home.update_device(kind, dev_id, name=name, wake_on_lan=wol)
+    if kind != "tv":
+        raise ApiError(HTTPStatus.BAD_REQUEST, "only TVs are paired")
+    return home.unpair(dev_id) if action == "unpair" else home.repair(dev_id)
 
 
 def _found_elsewhere(home: Home, kind: str, dev_id: str, action: str) -> bool:

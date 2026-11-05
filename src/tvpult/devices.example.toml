@@ -1,5 +1,6 @@
 # tvpult device configuration — example.
-# Copy to devices.toml and adjust. (A setup wizard that finds the TVs by itself is planned.)
+# Usually you don't need it: the remote page finds the TVs (setup wizard) and edits this file (⚙ settings).
+# To write it by hand: `tvpult init`, then adjust.
 #
 # Addresses below are only a first guess: tvpult finds each device by its MAC (TV) or Cast UUID
 # (soundbar) if it moved, and remembers the new address in .data/addresses.json.

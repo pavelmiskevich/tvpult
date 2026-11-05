@@ -28,6 +28,26 @@ file stays byte-for-byte as it was, and the result is re-read — if it doesn't 
 Names reach the page only as text (`textContent`), never as HTML. Wake-on-LAN defaults to on for model year
 2018+ — an assumption (a 2017 set didn't wake over Wi-Fi), editable later.
 
+## Settings page
+
+The "⚙" tab changes what used to need editing `devices.toml`: names, Wake-on-LAN, removing a device, the
+quick-launch row (`[ui] quick_apps`). The file is edited with `tomlkit`, which keeps comments, order and layout;
+only the touched values change. The new text is parsed by the same loader before anything is written, then
+replaces the file in one step (`os.replace`) — a failed or interrupted edit leaves the old file. One writer at a
+time (a lock shared with the wizard). A comment line *above* a removed section stays: TOML can't tell whose it was.
+
+- **Remove** deletes the section, the pairing token and the remembered address. Two taps (the first only asks)
+  instead of a browser dialog.
+- **Forget the token** ("Отключить") deletes only the token; the TV still lists tvpult in its own device list
+  until it's removed there (the page says where). **Connect again** moves the token aside first — otherwise the
+  TV would just accept the old one — and puts it back if the TV declines or the prompt times out.
+- **Search again** is `relocate(force=True)`, at most once per 10 s.
+- Quick-launch apps are chosen from the apps the TVs report (a TV that is off shows none), up to 12; aliases
+  are checked against `[A-Za-z0-9_.-]{1,40}`.
+
+Like the wizard, settings are open to every caller the server lets in (this computer, the tailnet, a phone
+signed in with the PIN): a signed-in phone already controls the TVs fully.
+
 ## Where files live
 
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:

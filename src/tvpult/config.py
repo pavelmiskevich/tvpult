@@ -115,7 +115,11 @@ def load_config(path: Path | None = None) -> Config:
     path = Path(path) if path else config_file()
     if not path.exists():
         return Config()
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    return parse_config(path.read_text(encoding="utf-8"))
+
+
+def parse_config(text: str) -> Config:
+    raw = tomllib.loads(text)
     tvs = {
         tv_id: TvConfig(
             id=tv_id,
@@ -214,3 +218,93 @@ def add_tv_to_config(tv: TvConfig, path: Path | None = None) -> None:
         else:
             path.write_text(before, encoding="utf-8")
         raise
+
+
+# --- editing (settings page) ---------------------------------------------------------------
+# Sections in devices.toml for each device kind ("soundbar" is the kind the status reports).
+SECTIONS = {"tv": "tv", "soundbar": "soundbar"}
+APP_ALIAS = re.compile(r"[A-Za-z0-9_.-]{1,40}")
+MAX_QUICK_APPS = 12
+
+
+def clean_name(name: str) -> str:
+    """A device name as stored: whitespace collapsed, at most 40 characters."""
+    return " ".join(str(name).split())[:40]
+
+
+def edit_config(change, path: Path | None = None) -> Config:
+    """Apply change(doc) to devices.toml and save it; comments, order and layout stay as they were.
+
+    The new text is checked before anything is written and replaces the file in one step (a crash
+    mid-way leaves the old file). Returns the config as read back from the new text.
+    """
+    import tomlkit
+
+    path = Path(path) if path else config_file()
+    doc = tomlkit.parse(path.read_text(encoding="utf-8") if path.exists() else "")
+    change(doc)
+    text = tomlkit.dumps(doc)
+    result = parse_config(text)  # raises if the result isn't valid: nothing written then
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return result
+
+
+def _section(doc, kind: str, dev_id: str):
+    table = doc.get(SECTIONS[kind], {})
+    if dev_id not in table:
+        raise KeyError(f"no {kind} '{dev_id}' in the config")
+    return table[dev_id]
+
+
+def update_device(kind: str, dev_id: str, *, name: str | None = None, wake_on_lan: bool | None = None,
+                  path: Path | None = None) -> Config:
+    """Rename a device and/or switch Wake-on-LAN (TVs) in devices.toml."""
+    if kind not in SECTIONS:
+        raise ValueError(f"unknown device kind: {kind!r}")
+    if wake_on_lan is not None and kind != "tv":
+        raise ValueError("only TVs have Wake-on-LAN")
+
+    def change(doc):
+        sec = _section(doc, kind, dev_id)
+        if name is not None:
+            if not clean_name(name):
+                raise ValueError("the name can't be empty")
+            sec["name"] = clean_name(name)
+        if wake_on_lan is not None:
+            sec["wake_on_lan"] = bool(wake_on_lan)
+
+    return edit_config(change, path)
+
+
+def remove_device(kind: str, dev_id: str, path: Path | None = None) -> Config:
+    """Delete a device's section from devices.toml."""
+    if kind not in SECTIONS:
+        raise ValueError(f"unknown device kind: {kind!r}")
+
+    def change(doc):
+        _section(doc, kind, dev_id)  # KeyError if absent
+        table = doc[SECTIONS[kind]]
+        del table[dev_id]
+        if not table:  # no devices of this kind left: no empty [tv] header either
+            del doc[SECTIONS[kind]]
+
+    return edit_config(change, path)
+
+
+def set_quick_apps(aliases: list[str], path: Path | None = None) -> Config:
+    """The quick-launch row: app aliases in the order they are shown ([ui] quick_apps)."""
+    import tomlkit
+
+    aliases = list(dict.fromkeys(aliases))
+    if len(aliases) > MAX_QUICK_APPS or not all(isinstance(a, str) and APP_ALIAS.fullmatch(a) for a in aliases):
+        raise ValueError(f"up to {MAX_QUICK_APPS} app names (letters, digits, . _ -)")
+
+    def change(doc):
+        if "ui" not in doc:
+            doc["ui"] = tomlkit.table()
+        doc["ui"]["quick_apps"] = aliases
+
+    return edit_config(change, path)
