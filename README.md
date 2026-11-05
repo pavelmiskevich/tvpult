@@ -58,26 +58,34 @@ Command line too: `tvpult status`, `tvpult key living home right ok`, `tvpult la
 Other brands (LG webOS, Android/Google TV, Roku) are planned as separate drivers.
 Please report your model in an issue — whether it works or not.
 
+## On your phone
+
+Start the remote with `--lan` (`uv run tvpult serve --lan`, or a shortcut made with `uv run tvpult shortcut --lan`).
+On the computer, open **📱 Remote on the phone**: point the phone's camera at the QR code (or type the address)
+and enter the 6-digit PIN shown there — once; the phone stays signed in for 30 days. Phones that signed in are
+listed there and can be signed out with one click. Away from home: `--tailnet` with your own Tailscale network.
+
 ## Safety
 
 - Talks only to devices on your local network. Nothing goes to any cloud.
-- The page listens on `127.0.0.1` only (phone access over the home network with a PIN is planned;
-  remote access via your own Tailscale tailnet is supported). **Never forward its port on your router.**
+- The page listens on `127.0.0.1` only by default; `--lan` opens it to the home network **behind a PIN**,
+  `--tailnet` to your own Tailscale network. **Never forward its port on your router.**
 - Only ordinary remote keys can be sent — service-menu keys are blocked, so nothing irreversible can be done.
 - Before any command the device's identity is checked (MAC reported by the TV must match the ARP table).
 - Requests from other websites in your browser are rejected (Host check, custom header, Origin check).
 - Undo everything: remove `tvpult` from the TV's connected-devices list and delete the folder.
 
-Details: [docs/design.md](docs/design.md).
+Details: [SECURITY.md](SECURITY.md) (what is and isn't protected, how to report a vulnerability) and
+[docs/design.md](docs/design.md).
 
 ## Roadmap
 
-1. Setup wizard: find all Samsung TVs, pair, name them — no config file to edit.
-2. Settings page; app catalog with regions; English and Russian UI.
-3. Phone access over home Wi-Fi with a PIN.
-4. PyPI package (`uv tool install tvpult`), CI, first release.
-5. Windows installer with a desktop shortcut and a tray icon.
-6. Drivers for other brands.
+Done: setup wizard, finding every Samsung TV, phone access with a PIN, CI. Next:
+
+1. Settings page; app catalog with regions; English and Russian UI.
+2. PyPI package (`uv tool install tvpult`), first release.
+3. Windows installer with a desktop shortcut and a tray icon.
+4. Drivers for other brands.
 
 ## Credits
 

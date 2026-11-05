@@ -46,6 +46,23 @@
   .setup-actions { display: flex; gap: 8px; margin-top: 14px; }
   .setup-actions .b { flex: 1; }
   button.b.primary { background: var(--accent); color: var(--accent-text); }
+  .pin-input { width: 100%; min-height: 64px; border-radius: 14px; border: 1px solid var(--btn-press);
+    background: var(--bg); color: var(--text); font: 600 32px/1 ui-monospace, monospace; letter-spacing: .3em;
+    text-align: center; }
+  .pin-input:focus { outline: 3px solid var(--ring); outline-offset: 1px; }
+  .pin-msg { min-height: 1.4em; margin: 10px 0 0; color: var(--danger); font-size: 14px; }
+  details.phone summary { cursor: pointer; font-weight: 600; list-style-position: inside; }
+  .phone-body { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; align-items: center; }
+  .phone-body img { background: #fff; border-radius: 10px; flex: none; }
+  .phone-info { flex: 1; min-width: 160px; }
+  .phone-info p { margin: 0 0 4px; }
+  .lan-url { font-weight: 600; overflow-wrap: anywhere; margin-bottom: 10px !important; }
+  .lan-pin { font: 700 30px/1.2 ui-monospace, monospace; letter-spacing: .15em; margin-bottom: 10px !important; }
+  .sessions { display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
+  .sess { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 14px;
+    min-width: 0; }
+  .sess span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .sess button.b { min-height: 36px; padding: 0 12px; font-size: 14px; flex: none; }
   .tab { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 10px 6px; border-radius: 10px;
     font: inherit; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
   .tab[aria-selected="true"] { background: var(--btn); color: var(--text); }
@@ -208,6 +225,35 @@
     </div>
   </section>
 
+  <!-- Phone on the home network: PIN sign-in (shown only when the server asks for it) -->
+  <section id="pin" hidden>
+    <form class="card" id="pinForm" autocomplete="off">
+      <h1 class="setup-title">Вход с телефона</h1>
+      <p class="setup-msg">Введите PIN — он показан на экране компьютера, где запущен пульт.</p>
+      <input id="pinIn" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+             autocomplete="one-time-code" aria-label="PIN" placeholder="••••••">
+      <button class="b primary" type="submit" id="pinGo" style="width:100%;margin-top:12px">Войти</button>
+      <p class="pin-msg" id="pinMsg" role="status"></p>
+    </form>
+  </section>
+
+  <!-- On this computer only: how to open the remote on a phone -->
+  <details class="card phone" id="phone" hidden>
+    <summary>📱 Пульт на телефоне</summary>
+    <div class="phone-body">
+      <img id="lanQr" alt="QR-код с адресом пульта" width="180" height="180">
+      <div class="phone-info">
+        <p class="setup-msg">Телефон в той же сети Wi-Fi: наведите камеру на QR-код или откройте</p>
+        <p class="lan-url" id="lanUrl"></p>
+        <p class="setup-msg">PIN для входа</p>
+        <p class="lan-pin" id="lanPin"></p>
+        <button class="b" id="lanNewPin" type="button">Новый PIN</button>
+      </div>
+    </div>
+    <p class="label" style="margin-top:12px">Вошедшие телефоны</p>
+    <div id="lanSessions" class="sessions"></div>
+  </details>
+
   <p class="hint" id="hint">Стрелки, Enter, Backspace (назад), H (домой) работают с клавиатуры</p>
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -215,7 +261,7 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true };
+const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true, needPin: false };
 const APP_LABELS = { youtube: "YouTube", kinopoisk: "Кинопоиск", premier: "Премьер", okko: "Okko",
   browser: "Браузер", netflix: "Netflix", prime: "Prime Video", ivi: "Иви", wink: "Wink", start: "START",
   kion: "КИОН", rutube: "RUTUBE", vkvideo: "VK Видео", moretv: "more.tv" };
@@ -227,9 +273,56 @@ async function api(path, body) {
   };
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && data.error === "pin_required") {  // a phone on the home network, not signed in yet
+    if (!state.needPin) { state.needPin = true; render(); }
+    const e = new Error("Нужен PIN"); e.pin = true; throw e;
+  }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }
+
+// --- PIN sign-in (phones on the home network) ------------------------------------------
+$("pinForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pin = $("pinIn").value.replace(/\D/g, "");
+  if (pin.length !== 6) { $("pinMsg").textContent = "PIN — 6 цифр"; return; }
+  $("pinGo").disabled = true; $("pinMsg").textContent = "";
+  try {
+    await api("/api/login", { pin });
+    state.needPin = false; $("pinIn").value = "";
+    hello(); refresh();
+  } catch (err) {
+    $("pinMsg").textContent = err.message === "wrong PIN" ? "Неверный PIN" :
+      err.message.startsWith("too many") ? "Слишком много попыток — подождите 10 минут" : err.message;
+  } finally {
+    $("pinGo").disabled = false;
+  }
+});
+
+// --- On this computer: PIN, address and QR for phones (the server answers only here) -------
+async function loadLan() {
+  let info;
+  try {
+    const r = await fetch("/api/lan");
+    if (!r.ok) { $("phone").hidden = true; return; }
+    info = await r.json();
+  } catch (_) { return; }
+  $("phone").hidden = !info.enabled;
+  if (!info.enabled) return;
+  $("lanQr").src = info.qr; $("lanUrl").textContent = info.url; $("lanPin").textContent = info.pin;
+  const list = $("lanSessions");
+  if (!info.sessions.length) { list.replaceChildren(el("span", "setup-msg", "Пока никто не входил")); return; }
+  list.replaceChildren(...info.sessions.map((s) => {
+    const row = el("div", "sess");
+    const when = new Date(s.created * 1000).toLocaleDateString();
+    row.append(el("span", null, (s.label || "Телефон") + " · " + when));
+    const b = el("button", "b", "Отозвать");
+    b.onclick = () => act(() => api("/api/lan/revoke", { id: s.id }).then(loadLan), "Доступ отозван", { refreshAfter: 0 });
+    row.append(b);
+    return row;
+  }));
+}
+$("lanNewPin").onclick = () => act(() => api("/api/lan/pin", {}).then(loadLan), "Новый PIN", { refreshAfter: 0 });
 
 let toastTimer;
 function toast(msg) {
@@ -391,6 +484,13 @@ function renderBar(d) {
 
 function render() {
   if (!current() && state.devices.length) state.sel = state.devices[0].id;
+  $("pin").hidden = !state.needPin;
+  $("tabs").hidden = state.needPin;
+  if (state.needPin) {  // nothing else until signed in
+    ["setup", "tv", "bar", "hint"].forEach((id) => ($(id).hidden = true));
+    setTimeout(() => $("pinIn").focus(), 0);
+    return;
+  }
   renderTabs();
   $("setup").hidden = !state.setupOpen;
   const d = current();
@@ -410,7 +510,7 @@ async function refresh() {
     if (s.setup && state.setupAuto) { state.setupAuto = false; openSetup(); return; }  // first run: the wizard
     render();
   }
-  catch (e) { toast("Нет связи с ноутбуком: " + e.message); }
+  catch (e) { if (!e.pin) toast("Нет связи с ноутбуком: " + e.message); }
 }
 
 let refreshTimer;
@@ -484,6 +584,8 @@ window.addEventListener("pageshow", (e) => { if (e.persisted) hello(); }); // ba
 
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+loadLan();
+setInterval(() => { if (!document.hidden && !$("phone").hidden) loadLan(); }, 15000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 </script>
 </body>

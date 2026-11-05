@@ -5,6 +5,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- Phone access over the home network with a PIN (`serve --lan`, `app --lan`, `shortcut --lan`): the computer shows
+  the address, a QR code and a 6-digit PIN; a phone enters it once and stays signed in for 30 days (HttpOnly,
+  SameSite=Strict cookie; only hashes stored); sessions listed with readable device names and revocable; wrong
+  PINs rate-limited (5 per address / 10 min; 30 in total renew the PIN). `SECURITY.md` with the threat model;
+  private vulnerability reporting enabled. (#7)
 - First-run setup wizard in the remote page: with nothing configured it finds every Samsung TV, lets you name
   each one and connect it (press Allow on the TV); the TV is added to `devices.toml` only after the TV agreed,
   appending a section and leaving everything else in the file untouched. More TVs later via the "+ ТВ" tab.
