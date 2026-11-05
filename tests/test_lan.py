@@ -9,8 +9,15 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from tvpult.auth import (
-    COOKIE, LOCK_SECONDS, PER_ADDRESS_FAILS, TOTAL_FAILS_BEFORE_NEW_PIN, LanAuth, SignInError, cookie_token,
-    new_pin, set_cookie,
+    COOKIE,
+    LOCK_SECONDS,
+    PER_ADDRESS_FAILS,
+    TOTAL_FAILS_BEFORE_NEW_PIN,
+    LanAuth,
+    SignInError,
+    cookie_token,
+    new_pin,
+    set_cookie,
 )
 from tvpult.server import make_handler
 
