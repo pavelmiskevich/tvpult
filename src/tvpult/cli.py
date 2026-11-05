@@ -31,7 +31,7 @@ def shortcut_name() -> str:
     return t("shortcut.name")
 
 
-def _print_sightings(tvs: listv[dict]) -> None:
+def _print_sightings(tvs: list[dict]) -> None:
     """`find --all`: every Samsung TV seen, configured or new; unconfirmed ones with the reason."""
     if not tvs:
         print(t("cli.no_tvs"))
