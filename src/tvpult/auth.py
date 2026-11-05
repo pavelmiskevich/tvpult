@@ -35,6 +35,19 @@ def new_pin() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
+def device_label(user_agent: str | None) -> str:
+    """A readable name for a session from the browser's User-Agent: 'iPhone · Safari', 'Android · Chrome'."""
+    ua = user_agent or ""
+    device = next((name for key, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
+                                          ("Windows", "Windows"), ("Macintosh", "Mac"), ("Linux", "Linux"))
+                   if key in ua), "")
+    browser = next((name for key, name in (("YaBrowser", "Яндекс"), ("Edg/", "Edge"), ("OPR/", "Opera"),
+                                           ("Firefox/", "Firefox"), ("SamsungBrowser", "Samsung Internet"),
+                                           ("Chrome/", "Chrome"), ("CriOS", "Chrome"), ("Safari/", "Safari"))
+                    if key in ua), "")
+    return " · ".join(p for p in (device, browser) if p) or "Телефон"
+
+
 def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 

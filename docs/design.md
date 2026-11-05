@@ -89,6 +89,13 @@ changes in samsungtvws and is not done yet.
 ## The page and its guards
 
 - Listens on `127.0.0.1` (plus the Tailscale address with `--tailnet`). Never forward the port on a router.
+- Each listener has a role: **local** (this computer — everything, including the PIN), **tailnet** (Tailscale
+  vouches for the caller), **lan** (`--lan`, home network — every API call needs a session; the page itself is
+  served because it holds no secrets). A phone signs in with a 6-digit PIN shown only on the computer
+  (`/api/lan` answers only the local listener); it gets a random 256-bit token in an HttpOnly, SameSite=Strict
+  cookie for 30 days; only SHA-256 hashes are stored (`sessions.json` in the data dir); sessions are revocable.
+  5 wrong PINs lock an address for 10 minutes; 30 in total replace the PIN. Comparisons are constant-time.
+  The LAN is plain HTTP — see SECURITY.md for what that means.
 - `Host` must be one of ours (DNS rebinding), every POST needs `X-Tvpult: 1` (a cross-site page can't add it
   without a CORS preflight, which is never approved), a foreign `Origin` is refused.
 - Only ordinary remote keys are allowed; service-menu keys (`KEY_FACTORY`, …) are not.

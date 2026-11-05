@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import ipaddress
 import json
 import logging
 import os
@@ -170,11 +171,16 @@ def shortcut_target(executable: str | None = None) -> tuple[str, str]:
     raise DeviceError(f"рядом с {exe} нет pythonw — ярлык без окна консоли сделать не из чего")
 
 
-def _make_shortcut() -> str:
-    """Create «Пульт ТВ» on the desktop: starts the remote in its own window, stops when closed."""
+def _make_shortcut(lan: bool = False) -> str:
+    """Create «Пульт ТВ» on the desktop: starts the remote in its own window, stops when closed.
+
+    lan: the shortcut also opens the remote to phones on the home network (PIN sign-in).
+    """
     from .icon import write_icon
 
     target, arguments = shortcut_target()
+    if lan:
+        arguments += " --lan"
     icon = paths.data_dir() / "tvpult.ico"
     write_icon(icon)
     script = shortcut_script(target, arguments, paths.data_dir(), icon)
@@ -260,7 +266,8 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument("--port", type=int, default=DEFAULT_PORT)
         s.add_argument("--tailnet", action="store_true", help="открыть ещё и в сети Tailscale")
         s.add_argument("--lan", action="store_true", help="открыть для телефонов в домашней сети (вход по PIN)")
-    sub.add_parser("shortcut", help=f"создать ярлык «{SHORTCUT_NAME}» на рабочем столе")
+    s = sub.add_parser("shortcut", help=f"создать ярлык «{SHORTCUT_NAME}» на рабочем столе")
+    s.add_argument("--lan", action="store_true", help="ярлык откроет пульт и для телефонов в домашней сети (PIN)")
     sub.add_parser("init", help="создать devices.toml из примера в папке пользователя")
     sub.add_parser("paths", help="где лежат настройки и данные")
 
@@ -286,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.cmd == "shortcut":
         try:
-            print("Ярлык создан:", _make_shortcut())
+            print("Ярлык создан:", _make_shortcut(lan=a.lan))
             return 0
         except DeviceError as e:
             print(f"Ошибка: {e}", file=sys.stderr)
@@ -384,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
                 from .auth import LanAuth
 
                 lan = discovery.default_local_ip()
-                if not lan or not discovery.is_private_lan(__import__("ipaddress").IPv4Address(lan)):
+                if not lan or not discovery.is_private_lan(ipaddress.IPv4Address(lan)):
                     print("Не нашёл адрес ноутбука в домашней сети.", file=sys.stderr)
                     return 2
                 auth = LanAuth(paths.data_dir() / "sessions.json")

@@ -20,7 +20,7 @@ from importlib import resources
 from typing import Any
 from urllib.parse import urlsplit
 
-from .auth import LanAuth, SignInError, cookie_token, set_cookie
+from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey
 from .devices import DeviceError, Home
 
@@ -331,7 +331,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                     return
                 try:
                     token = auth.sign_in(self.client_address[0], body.get("pin"),
-                                         label=str(self.headers.get("User-Agent", ""))[:60])
+                                         label=device_label(self.headers.get("User-Agent")))
                 except SignInError as e:
                     self._json(e.status, {"error": str(e)})
                     return
