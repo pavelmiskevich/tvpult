@@ -138,3 +138,21 @@ def test_status_line_says_cable_in_the_cli_language(capsys):
     _print_status([{"kind": "tv", "id": "tv", "name": "TV", "host": "192.168.1.50", "online": True, "power": "on",
                     "paired": True, "wired": True, "network": ""}])
     assert "on, cable" in capsys.readouterr().out
+
+
+def test_serve_on_the_lan_prints_the_pin_line(tmp_path, capsys):
+    """serve() starts and stops, printing the phone line in the CLI language (a loop variable once hid t())."""
+    from tvpult.auth import LanAuth
+    from tvpult.server import Presence, serve
+
+    class QuietHome:
+        def status(self, rediscover="none"):
+            return []
+
+        def close(self):
+            pass
+
+    use_lang("en")
+    auth = LanAuth(tmp_path / "sessions.json", pin="123456")
+    serve(QuietHome(), [], 0, presence=Presence(idle_exit=True, startup=0), lan="127.0.0.1", auth=auth)
+    assert "from a phone on the home network, PIN: 123456" in capsys.readouterr().out

@@ -444,8 +444,8 @@ def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None 
         handler = make_handler(home, {lan.lower()}, presence, role="lan", auth=auth, lan_url=lan_url)
         servers.append(ThreadingHTTPServer((lan, port), handler))
     threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
-    for t in threads:
-        t.start()
+    for thread in threads:  # (not `t`: that is the translation function)
+        thread.start()
     for addr in binds:
         print(f"  http://{addr}:{port}/")
     if lan:
