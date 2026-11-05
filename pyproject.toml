@@ -23,6 +23,7 @@ dependencies = [
     "pychromecast>=14.1.1",
     "samsungtvws>=3.0",
     "segno>=1.6.6",
+    "tomlkit>=0.15.2",
 ]
 
 [project.urls]

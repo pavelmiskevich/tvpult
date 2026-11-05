@@ -5,6 +5,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- Settings page (the "⚙" tab): rename or remove TVs and soundbars, connect a TV again (the old pairing token comes
+  back if the TV says no), forget its token with directions for removing tvpult from the TV's own device list,
+  Wake-on-LAN on/off, "search again" for devices that moved, and pick and order the quick-launch apps from those
+  the TVs have. `devices.toml` is edited in place with `tomlkit` — comments and layout stay — checked before
+  writing and replaced in one step; removing a device also deletes its token and remembered address. (#4)
 - Phone access over the home network with a PIN (`serve --lan`, `app --lan`, `shortcut --lan`): the computer shows
   the address, a QR code and a 6-digit PIN; a phone enters it once and stays signed in for 30 days (HttpOnly,
   SameSite=Strict cookie; only hashes stored); sessions listed with readable device names and revocable; wrong

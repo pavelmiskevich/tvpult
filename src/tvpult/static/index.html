@@ -43,6 +43,17 @@
   .cand .note { font-size: 13px; color: var(--danger); }
   .cand .ok { font-size: 14px; color: var(--ok); font-weight: 600; }
   .cand .wait { font-size: 14px; color: var(--accent); }
+  .cand .row button.b { padding: 0 14px; flex: none; }
+  .cand .row.wrap { flex-wrap: wrap; }
+  .cand .row.wrap button.b { flex: 1 1 auto; min-height: 44px; font-size: 15px; }
+  .cand .check { margin-top: 0; }
+  .cand .check input { flex: none; min-height: 0; width: 20px; height: 20px; margin: 0; padding: 0; }
+  button.b.danger { background: var(--danger); color: #fff; }
+  .qlist { display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
+  .qrow { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .qrow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .qrow button.b { min-height: 40px; width: 44px; flex: none; }
+  .tab.gear { flex: 0 0 auto; padding: 10px 12px; }
   .setup-actions { display: flex; gap: 8px; margin-top: 14px; }
   .setup-actions .b { flex: 1; }
   button.b.primary { background: var(--accent); color: var(--accent-text); }
@@ -140,6 +151,27 @@
         <button class="b" id="setupScan">Искать снова</button>
         <button class="b primary" id="setupDone" hidden>Готово</button>
       </div>
+    </div>
+  </section>
+
+  <!-- Settings: devices, names, quick apps, unpairing (from the "⚙" tab) -->
+  <section id="settings" hidden>
+    <div class="card">
+      <h1 class="setup-title">Настройки</h1>
+      <p class="label">Устройства</p>
+      <div class="setup-list" id="setDevices"></div>
+      <div class="setup-actions">
+        <button class="b" id="setSearch">Искать снова</button>
+        <button class="b" id="setAdd">+ Добавить ТВ</button>
+      </div>
+      <p class="setup-msg" id="setSearchMsg" role="status" style="margin:10px 0 0"></p>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <p class="label">Быстрый запуск</p>
+      <p class="setup-msg">Кнопки над пультом — в этом порядке.</p>
+      <div class="qlist" id="setQuick"></div>
+      <p class="label" style="margin-top:14px">Добавить</p>
+      <div class="apps" id="setQuickAdd"></div>
     </div>
   </section>
 
@@ -261,7 +293,8 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true, needPin: false };
+const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true, needPin: false,
+  settingsOpen: false, settingsDirty: false, armed: null, setMsg: {} };
 const APP_LABELS = { youtube: "YouTube", kinopoisk: "Кинопоиск", premier: "Премьер", okko: "Okko",
   browser: "Браузер", netflix: "Netflix", prime: "Prime Video", ivi: "Иви", wink: "Wink", start: "START",
   kion: "КИОН", rutube: "RUTUBE", vkvideo: "VK Видео", moretv: "more.tv" };
@@ -342,11 +375,12 @@ function renderTabs() {
   const nav = $("tabs");
   const tabs = state.devices.map((d) => {
     const b = document.createElement("button");
-    b.className = "tab"; b.role = "tab"; b.setAttribute("aria-selected", String(d.id === state.sel && !state.setupOpen));
+    b.className = "tab"; b.role = "tab";
+    b.setAttribute("aria-selected", String(d.id === state.sel && !state.setupOpen && !state.settingsOpen));
     const dot = document.createElement("span"); dot.className = "dot " + powerClass(d);
     b.append(dot, document.createTextNode(d.name));
     b.onclick = () => {
-      state.sel = d.id; state.setupOpen = false;
+      state.sel = d.id; state.setupOpen = false; state.settingsOpen = false;
       try { localStorage.setItem("tvpult.sel", d.id); } catch (_) {}
       render();
     };
@@ -356,12 +390,178 @@ function renderTabs() {
   add.className = "tab add"; add.textContent = "+ ТВ"; add.title = "Найти и подключить телевизор";
   add.setAttribute("aria-selected", String(state.setupOpen));
   add.onclick = () => openSetup();
-  nav.replaceChildren(...tabs, add);
+  const gear = document.createElement("button");
+  gear.className = "tab gear"; gear.textContent = "⚙"; gear.title = "Настройки";
+  gear.setAttribute("aria-label", "Настройки"); gear.setAttribute("aria-selected", String(state.settingsOpen));
+  gear.onclick = () => openSettings();
+  nav.replaceChildren(...tabs, add, gear);
 }
+
+// --- settings -------------------------------------------------------------------------
+const KIND_LABEL = { tv: "Телевизор", soundbar: "Саундбар" };
+const UNPAIR_HINT = "Пульт забыл ключ доступа к этому ТВ. Чтобы убрать tvpult и из списка самого телевизора: " +
+  "Настройки → Общие → Диспетчер внешних устройств → Диспетчер подключения устройств → Список устройств " +
+  "(названия пунктов немного отличаются по годам).";
+
+function openSettings() {
+  state.settingsOpen = true; state.setupOpen = false; state.settingsDirty = true;
+  $("setSearchMsg").textContent = "";
+  render();
+}
+
+function appLabel(alias) {
+  if (APP_LABELS[alias]) return APP_LABELS[alias];
+  for (const d of state.devices) for (const a of d.apps || []) if (a.alias === alias) return a.name;
+  return alias;
+}
+
+// Run a settings change, then show the new state at once (and re-read it from the server).
+async function settingsAct(fn, okMsg) {
+  buzz();
+  try {
+    const r = await fn();
+    if (r && Array.isArray(r.quick)) state.quick = r.quick;
+    if (okMsg) toast(okMsg);
+  } catch (e) { toast(e.message); }
+  state.settingsDirty = true;
+  render();
+  refresh();
+}
+
+function renderSettings() {
+  state.settingsDirty = false;
+  $("setDevices").replaceChildren(...(state.devices.length
+    ? state.devices.map(deviceCard) : [el("p", "setup-msg", "Устройств пока нет — добавьте телевизор.")]));
+  renderQuickSettings();
+}
+
+function deviceCard(d) {
+  const card = el("div", "cand");
+  card.append(el("h2", null, d.name));
+  const meta = [KIND_LABEL[d.kind], d.model, d.host];
+  if (d.kind === "tv") meta.push(d.paired ? "подключён" : "не подключён");
+  card.append(el("div", "meta", meta.filter(Boolean).join(" · ")));
+
+  const msg = el("div", "wait");
+  const say = (cls, text) => {  // kept across re-renders until the next action on this device
+    state.setMsg[d.id] = text ? { cls, text } : undefined;
+    msg.className = cls; msg.textContent = text || ""; msg.hidden = !text;
+  };
+  const old = state.setMsg[d.id];
+  say(old ? old.cls : "wait", old ? old.text : "");
+
+  const row = el("div", "row");
+  const input = el("input");
+  input.type = "text"; input.maxLength = 40; input.value = d.name;
+  input.setAttribute("aria-label", "Имя: " + d.name);
+  const save = el("button", "b", "Сохранить");
+  save.disabled = true;
+  input.oninput = () => { save.disabled = !input.value.trim() || input.value.trim() === d.name; };
+  const doSave = () => { say(); settingsAct(() => api("/api/settings/device",
+    { kind: d.kind, id: d.id, name: input.value.trim() }), "Имя сохранено"); };
+  save.onclick = doSave;
+  input.onkeydown = (e) => { if (e.key === "Enter" && !save.disabled) doSave(); };
+  row.append(input, save);
+  card.append(row);
+
+  if (d.kind === "tv") {
+    const lab = el("label", "check");
+    const cb = el("input");
+    cb.type = "checkbox"; cb.checked = !!d.wake_on_lan; cb.disabled = !d.has_mac && !d.wake_on_lan;
+    lab.title = d.has_mac ? "Нужна настройка ТВ «Включение с мобильного»" : "MAC-адрес ТВ неизвестен";
+    cb.onchange = () => { say(); settingsAct(() => api("/api/settings/device",
+      { kind: "tv", id: d.id, wake_on_lan: cb.checked }),
+      cb.checked ? "Будет включаться по сети" : "Включение по сети выключено"); };
+    lab.append(cb, document.createTextNode("Включать по сети (Wake-on-LAN)"));
+    card.append(lab);
+  }
+
+  const acts = el("div", "row wrap");
+  if (d.kind === "tv") {
+    const pair = el("button", "b", d.paired ? "Подключить заново" : "Подключить");
+    pair.onclick = async () => {
+      buzz(); pair.disabled = true;
+      say("wait", "Смотрите на экран телевизора: если спросит — нажмите «Разрешить» (до 45 секунд)…");
+      try { await api("/api/settings/pair", { kind: "tv", id: d.id }); say("ok", "Подключён ✓"); }
+      catch (e) { say("note", "Не подключился: " + e.message); }
+      state.settingsDirty = true; refresh();
+    };
+    acts.append(pair);
+    if (d.paired) {
+      const unpair = el("button", "b", "Отключить");
+      unpair.onclick = async () => {
+        buzz();
+        try { await api("/api/settings/unpair", { kind: "tv", id: d.id }); say("wait", UNPAIR_HINT); }
+        catch (e) { say("note", e.message); }
+        state.settingsDirty = true; refresh();
+      };
+      acts.append(unpair);
+    }
+  }
+  const armed = state.armed === d.id;
+  const del = el("button", "b" + (armed ? " danger" : ""), armed ? "Точно удалить?" : "Удалить");
+  del.onclick = () => {
+    if (!armed) {  // two taps instead of a dialog: the first one only asks
+      state.armed = d.id; state.settingsDirty = true; render();
+      setTimeout(() => { if (state.armed === d.id) { state.armed = null; state.settingsDirty = true; render(); } }, 4000);
+      return;
+    }
+    state.armed = null; delete state.setMsg[d.id];
+    settingsAct(() => api("/api/settings/remove", { kind: d.kind, id: d.id }), d.name + ": удалён");
+  };
+  acts.append(del);
+  card.append(acts, msg);
+  return card;
+}
+
+function renderQuickSettings() {
+  const chosen = state.quick;
+  const save = (apps) => settingsAct(() => api("/api/settings/quick", { apps }));
+  const move = (i, j) => { const a = [...chosen]; [a[i], a[j]] = [a[j], a[i]]; save(a); };
+  const small = (text, label, fn, disabled) => {
+    const b = el("button", "b", text);
+    b.setAttribute("aria-label", label); b.disabled = !!disabled; b.onclick = fn;
+    return b;
+  };
+  $("setQuick").replaceChildren(...(chosen.length ? chosen.map((alias, i) => {
+    const row = el("div", "qrow");
+    const name = appLabel(alias);
+    row.append(el("span", null, name),
+      small("↑", "Выше: " + name, () => move(i, i - 1), i === 0),
+      small("↓", "Ниже: " + name, () => move(i, i + 1), i === chosen.length - 1),
+      small("✕", "Убрать: " + name, () => save(chosen.filter((a) => a !== alias))));
+    return row;
+  }) : [el("p", "setup-msg", "Пусто — добавьте приложения ниже.")]));
+  const avail = new Map();
+  for (const d of state.devices) {
+    for (const a of d.apps || []) if (!chosen.includes(a.alias) && !avail.has(a.alias)) avail.set(a.alias, appLabel(a.alias));
+  }
+  $("setQuickAdd").replaceChildren(...(avail.size ? [...avail].map(([alias, name]) => {
+    const b = el("button", "b", "+ " + name);
+    b.disabled = chosen.length >= 12;
+    b.onclick = () => save([...chosen, alias]);
+    return b;
+  }) : [el("p", "setup-msg", "Включите телевизор — здесь появятся его приложения.")]));
+}
+
+$("setAdd").onclick = () => openSetup();
+$("setSearch").onclick = async () => {
+  const btn = $("setSearch"), msg = $("setSearchMsg");
+  btn.disabled = true; msg.textContent = "Ищу устройства в сети…";
+  try {
+    const r = await api("/api/settings/search", {});
+    const n = Object.keys(r.found).length;
+    msg.textContent = r.recent ? "Только что искали — попробуйте через несколько секунд."
+      : n ? "Найдено в сети: " + n + " из " + state.devices.length + "."
+      : "Ни одно устройство не ответило — они включены?";
+  } catch (e) { msg.textContent = "Не получилось поискать: " + e.message; }
+  btn.disabled = false;
+  state.settingsDirty = true; refresh();
+};
 
 // --- setup wizard ---------------------------------------------------------------------
 function openSetup() {
-  state.setupOpen = true;
+  state.setupOpen = true; state.settingsOpen = false;
   render();
   scanTvs();
 }
@@ -487,14 +687,18 @@ function render() {
   $("pin").hidden = !state.needPin;
   $("tabs").hidden = state.needPin;
   if (state.needPin) {  // nothing else until signed in
-    ["setup", "tv", "bar", "hint"].forEach((id) => ($(id).hidden = true));
+    ["setup", "settings", "tv", "bar", "hint"].forEach((id) => ($(id).hidden = true));
     setTimeout(() => $("pinIn").focus(), 0);
     return;
   }
   renderTabs();
   $("setup").hidden = !state.setupOpen;
+  $("settings").hidden = !state.settingsOpen;
+  // Rebuilt after its own changes, and by the 5 s refresh only while nothing in it has focus
+  // (so a name being typed isn't wiped).
+  if (state.settingsOpen && (state.settingsDirty || !$("settings").contains(document.activeElement))) renderSettings();
   const d = current();
-  if (state.setupOpen || !d) {
+  if (state.setupOpen || state.settingsOpen || !d) {
     $("tv").hidden = true; $("bar").hidden = true; $("hint").hidden = true;
     return;
   }

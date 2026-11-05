@@ -9,7 +9,7 @@ window and it stops.
 *pult* is Russian for "remote control". [Русская версия](README.ru.md)
 
 > **Status: pre-alpha.** It works daily on two Samsung TVs (2017 Tizen 3.0 and 2022 Tizen 6.5).
-> A setup wizard, PyPI packaging and a Windows installer are on the way — see [Roadmap](#roadmap).
+> PyPI packaging and a Windows installer are on the way — see [Roadmap](#roadmap).
 
 ## What it does
 
@@ -37,7 +37,9 @@ uv run tvpult shortcut    # creates the desktop shortcut "Пульт ТВ"
 
 Switch the TVs on and double-click the shortcut. The first time, a **setup screen** finds every Samsung TV
 on your network: give each a name, click **Connect**, press **Allow** on the TV — done, that's your remote.
-More TVs later: the **+ ТВ** tab. No files to edit. (Without the shortcut: `uv run tvpult serve` and open
+More TVs later: the **+ ТВ** tab. Everyday changes are in **⚙ settings**: rename or remove devices, connect a TV
+again or forget it, Wake-on-LAN on/off, "search again", and which apps sit in the quick-launch row and in what
+order. No files to edit. (Without the shortcut: `uv run tvpult serve` and open
 http://127.0.0.1:8765/.)
 
 Your files live in your user folder, not next to the code: `tvpult paths` shows where
@@ -73,16 +75,17 @@ listed there and can be signed out with one click. Away from home: `--tailnet` w
 - Only ordinary remote keys can be sent — service-menu keys are blocked, so nothing irreversible can be done.
 - Before any command the device's identity is checked (MAC reported by the TV must match the ARP table).
 - Requests from other websites in your browser are rejected (Host check, custom header, Origin check).
-- Undo everything: remove `tvpult` from the TV's connected-devices list and delete the folder.
+- Undo everything: **⚙ → Remove** each device (or delete the folder), and remove `tvpult` from the TV's own
+  device list (Settings → General → External Device Manager → Device Connection Manager → Device List).
 
 Details: [SECURITY.md](SECURITY.md) (what is and isn't protected, how to report a vulnerability) and
 [docs/design.md](docs/design.md).
 
 ## Roadmap
 
-Done: setup wizard, finding every Samsung TV, phone access with a PIN, CI. Next:
+Done: setup wizard, settings page, finding every Samsung TV, phone access with a PIN, CI. Next:
 
-1. Settings page; app catalog with regions; English and Russian UI.
+1. App catalog with regions; English and Russian UI.
 2. PyPI package (`uv tool install tvpult`), first release.
 3. Windows installer with a desktop shortcut and a tray icon.
 4. Drivers for other brands.
