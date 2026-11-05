@@ -18,25 +18,30 @@ from . import config as paths
 from .catalog import ALLOWED_KEYS, KEY_ALIASES, UnknownKey
 from .config import init_config, load_config
 from .devices import DeviceError, Home
+from .i18n import t
 
 DEFAULT_PORT = 8765
 LOG_MAX_BYTES = 1_000_000
-SHORTCUT_NAME = "Пульт ТВ"
 # Commands that work without any configured device.
 NO_DEVICES_NEEDED = {"keys", "shortcut", "init", "paths", "serve", "app", "find"}
 
 
-def _print_sightings(tvs: list[dict]) -> None:
+def shortcut_name() -> str:
+    """The desktop shortcut's name, in the system language: "TV Remote" / «Пульт ТВ»."""
+    return t("shortcut.name")
+
+
+def _print_sightings(tvs: listv[dict]) -> None:
     """`find --all`: every Samsung TV seen, configured or new; unconfirmed ones with the reason."""
     if not tvs:
-        print("Телевизоров Samsung не найдено. Включены ли они? В той же ли сети ноутбук?")
+        print(t("cli.no_tvs"))
         return
-    for t in tvs:
-        year = t["year"] or "?"
-        who = f"настроен как {t['configured']}" if t["configured"] else "новый"
-        mac = ":".join(t["mac"][i:i + 2] for i in range(0, 12, 2))
-        mark = "" if t["confirmed"] else "  ⚠ " + t["note"]
-        print(f"{t['host']:<15} {t['model'] or '?':<16} {year:<5} {mac}  {t['name']}  [{who}]{mark}")
+    for tv in tvs:
+        year = tv["year"] or "?"
+        who = t("cli.configured_as", id=tv["configured"]) if tv["configured"] else t("cli.new")
+        mac = ":".join(tv["mac"][i:i + 2] for i in range(0, 12, 2))
+        mark = "" if tv["confirmed"] else "  ⚠ " + tv["note"]
+        print(f"{tv['host']:<15} {tv['model'] or '?':<16} {year:<5} {mac}  {tv['name']}  [{who}]{mark}")
 
 
 def log_file() -> Path:
@@ -90,34 +95,35 @@ def _print_status(devs: list[dict]) -> None:
     for d in devs:
         if d["kind"] == "tv":
             if d.get("wrong_device"):
-                state = "не найден (выключен?); по прежнему адресу теперь другое устройство"
+                state = t("cli.st.wrong_device")
             elif not d["online"]:
-                state = "выключен или не найден"
+                state = t("cli.st.off")
             elif d.get("power") != "on":
-                state = f"режим ожидания ({d.get('power')})"
+                state = t("cli.st.standby", power=d.get("power"))
             else:
-                state = "включён"
-                if d.get("network"):
-                    state += f", {d['network']}"
+                state = t("cli.st.on")
+                if d.get("wired") or d.get("network"):
+                    state += ", " + (t("cli.st.wired") if d.get("wired") else d["network"])
                 if d.get("current_app"):
-                    state += f", на экране: {d['current_app']}"
-            pair = "" if d.get("paired") else "  [не сопряжён: tvpult pair " + d["id"] + "]"
+                    state += ", " + t("cli.st.on_screen", app=d["current_app"])
+            pair = "" if d.get("paired") else "  [" + t("cli.st.not_paired", id=d["id"]) + "]"
             print(f"{d['id']:<6} {d['name']:<14} {d['host']:<15} {state}{pair}")
         else:
             if not d["online"]:
-                print(f"{d['id']:<6} {d['name']:<14} {d['host']:<15} недоступен")
+                print(f"{d['id']:<6} {d['name']:<14} {d['host']:<15} {t('cli.st.unreachable')}")
             else:
-                mute = ", звук выкл" if d.get("muted") else ""
-                app = f", играет: {d['app']}" if d.get("app") else ""
-                print(f"{d['id']:<6} {d['name']:<14} {d['host']:<15} громкость {d.get('volume')}%{mute}{app}")
+                mute = ", " + t("cli.st.muted") if d.get("muted") else ""
+                app = ", " + t("cli.st.playing", app=d["app"]) if d.get("app") else ""
+                vol = t("cli.st.volume", volume=d.get("volume"))
+                print(f"{d['id']:<6} {d['name']:<14} {d['host']:<15} {vol}{mute}{app}")
 
 
 def _ready(home: Home, dev):
     """Before acting on a device: if it doesn't answer where we left it, search for it once."""
     if not home.ensure(dev):
         if getattr(dev, "wrong_device", False):
-            raise DeviceError(f"{dev.cfg.name}: по адресу {dev.host} другое устройство, а наше не найдено")
-        raise DeviceError(f"{dev.cfg.name} выключен или не найден в сети")
+            raise DeviceError(t("cli.err.wrong_device", name=dev.cfg.name, host=dev.host))
+        raise DeviceError(t("cli.err.offline", name=dev.cfg.name))
     return dev
 
 
@@ -168,11 +174,13 @@ def shortcut_target(executable: str | None = None) -> tuple[str, str]:
         candidate = exe.with_name(name)
         if candidate.is_file():
             return str(candidate), "-m tvpult app"
-    raise DeviceError(f"рядом с {exe} нет pythonw — ярлык без окна консоли сделать не из чего")
+    raise DeviceError(t("cli.err.no_pythonw", exe=exe))
 
 
 def _make_shortcut(lan: bool = False) -> str:
-    """Create «Пульт ТВ» on the desktop: starts the remote in its own window, stops when closed.
+    """Create the desktop shortcut ("TV Remote" / «Пульт ТВ», by the system language).
+
+    It starts the remote in its own window and stops when that is closed.
 
     lan: the shortcut also opens the remote to phones on the home network (PIN sign-in).
     """
@@ -192,7 +200,7 @@ def _make_shortcut(lan: bool = False) -> str:
     path = out.stdout.decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
     if out.returncode != 0 or not Path(path[0]).is_file():
         err = out.stderr.decode("utf-8", "replace").strip() or out.stdout.decode("utf-8", "replace").strip()
-        raise DeviceError("ярлык не создан: " + (err or "PowerShell ничего не ответил"))
+        raise DeviceError(t("cli.err.shortcut", error=err or t("cli.err.powershell_silent")))
     return path[0]
 
 
@@ -207,7 +215,7 @@ def shortcut_script(target: str, arguments: str, workdir: Path, icon: Path) -> s
         "$ErrorActionPreference = 'Stop'",
         "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
         "$d = [Environment]::GetFolderPath('Desktop')",
-        f"$p = Join-Path $d {_ps_quote(SHORTCUT_NAME + '.lnk')}",
+        f"$p = Join-Path $d {_ps_quote(shortcut_name() + '.lnk')}",
         # WScript.Shell saves through the ANSI code page, which may lack Cyrillic: save under an
         # ASCII name, then rename with PowerShell, which handles Unicode names.
         "$tmp = Join-Path $d 'tvpult-remote.lnk'",
@@ -216,7 +224,7 @@ def shortcut_script(target: str, arguments: str, workdir: Path, icon: Path) -> s
         f"$s.Arguments = {_ps_quote(arguments)}",
         f"$s.WorkingDirectory = {_ps_quote(workdir)}",
         f"$s.IconLocation = {_ps_quote(f'{icon},0')}",
-        f"$s.Description = {_ps_quote('Пульт для телевизоров и саундбара')}",
+        f"$s.Description = {_ps_quote(t('shortcut.description'))}",
         "$s.Save()",
         "Move-Item -LiteralPath $tmp -Destination $p -Force",
         "Write-Output $p",
@@ -224,52 +232,51 @@ def shortcut_script(target: str, arguments: str, workdir: Path, icon: Path) -> s
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="tvpult", description="Управление телевизорами и саундбаром дома")
-    p.add_argument("--config", default=None, help="файл devices.toml (по умолчанию — в папке пользователя)")
-    p.add_argument("--data-dir", default=None, help="папка для ключей сопряжения, адресов, журнала")
+    p = argparse.ArgumentParser(prog="tvpult", description=t("cli.description"))
+    p.add_argument("--config", default=None, help=t("cli.opt.config"))
+    p.add_argument("--data-dir", default=None, help=t("cli.opt.data_dir"))
     p.add_argument("--addresses", default=None, help=argparse.SUPPRESS)  # address book path (tests)
     p.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)  # app mode without a window (tests)
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("status", help="что включено и что на экране")
-    s = sub.add_parser("find", help="найти устройства в сети (по MAC/UUID) и запомнить адреса")
-    s.add_argument("--all", action="store_true", help="показать все Samsung TV в сети, а не только настроенные")
-    s = sub.add_parser("pair", help="сопрячь ТВ с ноутбуком (на ТВ нажать «Разрешить»)")
+    sub.add_parser("status", help=t("cli.cmd.status"))
+    s = sub.add_parser("find", help=t("cli.cmd.find"))
+    s.add_argument("--all", action="store_true", help=t("cli.cmd.find_all"))
+    s = sub.add_parser("pair", help=t("cli.cmd.pair"))
     s.add_argument("tv")
-    s = sub.add_parser("on", help="включить ТВ")
+    s = sub.add_parser("on", help=t("cli.cmd.on"))
     s.add_argument("tv")
-    s = sub.add_parser("off", help="выключить ТВ")
+    s = sub.add_parser("off", help=t("cli.cmd.off"))
     s.add_argument("tv")
-    s = sub.add_parser("key", help="нажать кнопки пульта: tvpult key living home right ok")
+    s = sub.add_parser("key", help=t("cli.cmd.key"))
     s.add_argument("tv")
     s.add_argument("keys", nargs="+")
-    s = sub.add_parser("apps", help="какие приложения из списка есть на ТВ")
+    s = sub.add_parser("apps", help=t("cli.cmd.apps"))
     s.add_argument("tv")
-    s = sub.add_parser("text", help="ввести текст в открытое на ТВ поле: tvpult text living \"поиск\"")
+    s = sub.add_parser("text", help=t("cli.cmd.text"))
     s.add_argument("tv")
     s.add_argument("text")
-    s.add_argument("--no-submit", action="store_true", help="не нажимать «Готово»")
-    s = sub.add_parser("discover", help="спросить у ТВ полный список приложений с id")
+    s.add_argument("--no-submit", action="store_true", help=t("cli.cmd.no_submit"))
+    s = sub.add_parser("discover", help=t("cli.cmd.discover"))
     s.add_argument("tv")
-    s.add_argument("--grep", help="показать только совпадающие по названию")
-    s = sub.add_parser("launch", help="открыть приложение: tvpult launch living youtube")
+    s.add_argument("--grep", help=t("cli.cmd.grep"))
+    s = sub.add_parser("launch", help=t("cli.cmd.launch"))
     s.add_argument("tv")
     s.add_argument("app")
-    s = sub.add_parser("vol", help="громкость саундбара: 25, +5, -5, mute, unmute")
+    s = sub.add_parser("vol", help=t("cli.cmd.vol"))
     s.add_argument("value")
     s.add_argument("--bar")
-    sub.add_parser("keys", help="список разрешённых кнопок")
-    for name, help_ in (("serve", "запустить страничку-пульт (до Ctrl+C)"),
-                        ("app", "пульт отдельным окном; закрыл окно — всё остановилось (для ярлыка)")):
-        s = sub.add_parser(name, help=help_)
+    sub.add_parser("keys", help=t("cli.cmd.keys"))
+    for name in ("serve", "app"):
+        s = sub.add_parser(name, help=t(f"cli.cmd.{name}"))
         s.add_argument("--port", type=int, default=DEFAULT_PORT)
-        s.add_argument("--tailnet", action="store_true", help="открыть ещё и в сети Tailscale")
-        s.add_argument("--lan", action="store_true", help="открыть для телефонов в домашней сети (вход по PIN)")
-    s = sub.add_parser("shortcut", help=f"создать ярлык «{SHORTCUT_NAME}» на рабочем столе")
-    s.add_argument("--lan", action="store_true", help="ярлык откроет пульт и для телефонов в домашней сети (PIN)")
-    sub.add_parser("init", help="создать devices.toml из примера в папке пользователя")
-    sub.add_parser("paths", help="где лежат настройки и данные")
+        s.add_argument("--tailnet", action="store_true", help=t("cli.cmd.tailnet"))
+        s.add_argument("--lan", action="store_true", help=t("cli.cmd.lan"))
+    s = sub.add_parser("shortcut", help=t("cli.cmd.shortcut", name=shortcut_name()))
+    s.add_argument("--lan", action="store_true", help=t("cli.cmd.shortcut_lan"))
+    sub.add_parser("init", help=t("cli.cmd.init"))
+    sub.add_parser("paths", help=t("cli.cmd.paths"))
 
     a = p.parse_args(argv)
     paths.use_paths(a.config, a.data_dir)
@@ -288,25 +295,26 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8")
 
     if a.cmd == "keys":
-        print("Псевдонимы:", ", ".join(sorted(KEY_ALIASES)))
-        print("Кнопки:", ", ".join(sorted(ALLOWED_KEYS)))
+        print(t("cli.aliases"), ", ".join(sorted(KEY_ALIASES)))
+        print(t("cli.keys"), ", ".join(sorted(ALLOWED_KEYS)))
         return 0
     if a.cmd == "shortcut":
         try:
-            print("Ярлык создан:", _make_shortcut(lan=a.lan))
+            print(t("cli.shortcut_made"), _make_shortcut(lan=a.lan))
             return 0
         except DeviceError as e:
-            print(f"Ошибка: {e}", file=sys.stderr)
+            print(t("cli.error", error=e), file=sys.stderr)
             return 1
     if a.cmd == "paths":
-        print("Настройки:", paths.config_file(), "" if paths.config_file().exists() else "(ещё нет — tvpult init)")
-        print("Данные:   ", paths.data_dir())
+        missing = "" if paths.config_file().exists() else t("cli.paths.missing")
+        print(t("cli.paths.config"), paths.config_file(), missing)
+        print(t("cli.paths.data"), paths.data_dir())
         return 0
     if a.cmd == "init":
         if init_config():
-            print("Создан", paths.config_file(), "— впиши туда MAC своих ТВ (Настройки > Об этом ТВ)")
+            print(t("cli.init.created", path=paths.config_file()))
         else:
-            print("Уже есть", paths.config_file(), "— не трогаю")
+            print(t("cli.init.exists", path=paths.config_file()))
         return 0
     if a.cmd == "app" and _our_server_running(a.port):
         _open_remote(f"http://127.0.0.1:{a.port}/")  # already running: just show it
@@ -315,8 +323,7 @@ def main(argv: list[str] | None = None) -> int:
     _no_proxy_for_lan()
     cfg = load_config()
     if cfg.empty and a.cmd not in NO_DEVICES_NEEDED:
-        print(f"Устройства не настроены: {paths.config_file()} не найден или пуст. Начни с `tvpult init`.",
-              file=sys.stderr)
+        print(t("cli.not_configured", path=paths.config_file()), file=sys.stderr)
         return 1
     home = Home(cfg, keep_alive=a.cmd in ("serve", "app"),
                 book_path=Path(a.addresses) if a.addresses else None)
@@ -324,37 +331,40 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "status":
             _print_status(home.status(rediscover="wait"))
         elif a.cmd == "find":
-            print("Ищу устройства в сетях:", ", ".join(str(n) for n in home.subnets()) or "—")
+            print(t("cli.find.networks"), ", ".join(str(n) for n in home.subnets()) or "—")
             if a.all or cfg.empty:
                 _print_sightings(home.scan_tvs())
                 return 0
             found = home.relocate(force=True)
             for d in home.devices():
                 where = found.get(d.cfg.id)
-                how = {"mac": "по MAC", "uuid": "по UUID", "arp": "по MAC из ARP"}.get(where.how) if where else None
-                line = f"{d.host:<15} найден {how}" if where else "не найден (выключен?)"
+                if where:
+                    how = t(f"cli.find.by.{where.how}") if where.how in ("mac", "uuid", "arp") else where.how
+                    line = f"{d.host:<15} " + t("cli.find.found", how=how)
+                else:
+                    line = t("cli.find.missing")
                 print(f"{d.cfg.id:<6} {d.cfg.name:<14} {line}")
         elif a.cmd == "pair":
             tv = _ready(home, home.tv(a.tv))
-            print("Смотри на экран ТВ и нажми «Разрешить» (около 30 секунд)…")
+            print(t("cli.pair.look"))
             tv.pair()
-            print("Готово: ТВ сопряжён.")
+            print(t("cli.pair.done"))
         elif a.cmd == "on":
             print(home.tv(a.tv).power_on())
         elif a.cmd == "off":
             print(_ready(home, home.tv(a.tv)).power_off())
         elif a.cmd == "key":
-            print("нажато:", " ".join(_ready(home, home.tv(a.tv)).send_keys(a.keys)))
+            print(t("cli.pressed"), " ".join(_ready(home, home.tv(a.tv)).send_keys(a.keys)))
         elif a.cmd == "apps":
             for app in _ready(home, home.tv(a.tv)).installed_apps(refresh=True):
                 print(f"{app['alias']:<10} {app['id']:<16} {app['name']}")
         elif a.cmd == "text":
             _ready(home, home.tv(a.tv)).send_text(a.text, submit=not a.no_submit)
-            print("текст отправлен")
+            print(t("cli.text_sent"))
         elif a.cmd == "discover":
             apps = _ready(home, home.tv(a.tv)).discover_apps()
             if apps is None:
-                print("ТВ не прислал список (модели 2022+ его не отдают). Используй tvpult apps.", file=sys.stderr)
+                print(t("cli.discover.none"), file=sys.stderr)
                 return 1
             pat = (a.grep or "").lower()
             for app in sorted(apps, key=lambda x: x["name"].lower()):
@@ -362,16 +372,16 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 print(f"{app['id']:<36} {app['name']}")
         elif a.cmd == "launch":
-            print("открыто:", _ready(home, home.tv(a.tv)).launch(a.app))
+            print(t("cli.opened"), _ready(home, home.tv(a.tv)).launch(a.app))
         elif a.cmd == "vol":
             bar = _ready(home, home.bar(a.bar))
             v = a.value.lower()
             if v in ("mute", "unmute"):
-                print("звук выключен" if bar.set_muted(v == "mute") else "звук включён")
+                print(t("cli.vol.muted") if bar.set_muted(v == "mute") else t("cli.vol.unmuted"))
             elif v[0] in "+-":
-                print(f"громкость {bar.change_volume(int(v))}%")
+                print(t("cli.vol.level", volume=bar.change_volume(int(v))))
             else:
-                print(f"громкость {bar.set_volume(int(v))}%")
+                print(t("cli.vol.level", volume=bar.set_volume(int(v))))
         elif a.cmd in ("serve", "app"):
             from .server import Presence, serve
 
@@ -379,12 +389,12 @@ def main(argv: list[str] | None = None) -> int:
             if a.tailnet:
                 ip, name = _tailscale_self()
                 if not ip:
-                    print("Tailscale не найден или не подключён.", file=sys.stderr)
+                    print(t("cli.no_tailscale"), file=sys.stderr)
                     return 2
                 binds.append(ip)
                 if name:
                     names.add(name)
-                    print(f"  в Tailscale также: http://{name}:{a.port}/")
+                    print(t("cli.tailnet_also", url=f"http://{name}:{a.port}/"))
             lan, auth = None, None
             if a.lan:  # phones on the home network, with PIN sign-in
                 from . import discovery
@@ -392,23 +402,23 @@ def main(argv: list[str] | None = None) -> int:
 
                 lan = discovery.default_local_ip()
                 if not lan or not discovery.is_private_lan(ipaddress.IPv4Address(lan)):
-                    print("Не нашёл адрес ноутбука в домашней сети.", file=sys.stderr)
+                    print(t("cli.no_lan_ip"), file=sys.stderr)
                     return 2
                 auth = LanAuth(paths.data_dir() / "sessions.json")
             url = f"http://127.0.0.1:{a.port}/"
             if a.cmd == "app":
-                print("Пульт открыт; закрой окно пульта — всё остановится:")
+                print(t("cli.app_open"))
                 serve(home, binds, a.port, names, Presence(idle_exit=True),
                       on_ready=None if a.no_browser else (lambda: _open_remote(url)), lan=lan, auth=auth)
             else:
-                print("Пульт открыт (Ctrl+C — остановить):")
+                print(t("cli.serve_open"))
                 serve(home, binds, a.port, names, lan=lan, auth=auth)
         return 0
     except UnknownKey as e:
-        print(f"Нет такой кнопки: {e}. Список: tvpult keys", file=sys.stderr)
+        print(t("cli.unknown_key", key=e), file=sys.stderr)
         return 2
     except (DeviceError, ValueError) as e:
-        print(f"Ошибка: {e}", file=sys.stderr)
+        print(t("cli.error", error=e), file=sys.stderr)
         return 1
     finally:
         home.close()

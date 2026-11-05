@@ -223,6 +223,7 @@ class SamsungTv:
             out["online"] = True
             out["model"] = dev.get("modelName")
             out["network"] = self.network_label(dev)
+            out["wired"] = dev.get("networkType") == "wired"  # the page and the CLI say "cable" in their language
             # 2017 sets don't report PowerState; if they answer at all, they're on.
             out["power"] = dev.get("PowerState", "on")
             if out["power"] == "on":
@@ -234,9 +235,9 @@ class SamsungTv:
         return out
 
     def network_label(self, dev: dict[str, Any]) -> str:
-        """'Wi-Fi Home', 'Кабель', or the raw access-point MAC when it has no label."""
+        """'Wi-Fi Home', or the raw access-point MAC when it has no label; '' for a cable (see "wired")."""
         if dev.get("networkType") == "wired":
-            return "Кабель"
+            return ""
         bssid = str(dev.get("ssid") or "").lower()
         if not bssid:
             return "Wi-Fi"

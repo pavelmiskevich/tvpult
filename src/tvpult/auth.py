@@ -41,11 +41,11 @@ def device_label(user_agent: str | None) -> str:
     device = next((name for key, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
                                           ("Windows", "Windows"), ("Macintosh", "Mac"), ("Linux", "Linux"))
                    if key in ua), "")
-    browser = next((name for key, name in (("YaBrowser", "Яндекс"), ("Edg/", "Edge"), ("OPR/", "Opera"),
+    browser = next((name for key, name in (("YaBrowser", "Yandex"), ("Edg/", "Edge"), ("OPR/", "Opera"),
                                            ("Firefox/", "Firefox"), ("SamsungBrowser", "Samsung Internet"),
                                            ("Chrome/", "Chrome"), ("CriOS", "Chrome"), ("Safari/", "Safari"))
                     if key in ua), "")
-    return " · ".join(p for p in (device, browser) if p) or "Телефон"
+    return " · ".join(p for p in (device, browser) if p)  # empty: the page shows "Phone" in its language
 
 
 def _hash(token: str) -> str:

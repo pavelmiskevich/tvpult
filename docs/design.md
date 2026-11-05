@@ -48,6 +48,21 @@ time (a lock shared with the wizard). A comment line *above* a removed section s
 Like the wizard, settings are open to every caller the server lets in (this computer, the tailnet, a phone
 signed in with the PIN): a signed-in phone already controls the TVs fully.
 
+## Languages
+
+Two dictionaries, `locales/en.json` and `locales/ru.json`, flat `key → text` with `{name}` placeholders. Keys
+starting with `page.` belong to the page: the server embeds both languages into it when serving it (the
+`/*TVPULT_I18N*/null` slot, `<` escaped), so there is no extra request and the PIN screen — which can't call the
+API yet — is translated too. The page picks `localStorage["tvpult.lang"]` (the switch in ⚙), else the first
+`en`/`ru` in `navigator.languages`, else English. Static text carries `data-i18n` / `data-i18n-aria` /
+`-ph` / `-alt` attributes; per-device messages in the settings are kept as keys, so switching the language
+applies to them too. The rest is for the command line, in the system language: `TVPULT_LANG`, then on Windows
+the display language (`GetUserDefaultUILanguage`, not the regional format), elsewhere `LC_ALL` / `LC_MESSAGES` /
+`LANG`; anything that isn't Russian is English. The shortcut gets its name at creation time.
+
+The server's status is language-neutral (`"wired": true` instead of a word for "cable"; power results are
+fixed English phrases the page maps). Error messages from the devices are still English in both languages.
+
 ## Where files live
 
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:

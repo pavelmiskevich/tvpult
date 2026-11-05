@@ -34,6 +34,17 @@ def isolated_paths(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def russian_by_default():
+    """The command line speaks the system language; tests fix it (Russian, as the older tests expect)."""
+    from tvpult import i18n
+
+    i18n.use_lang("ru")
+    yield
+    i18n.use_lang(None)
+    i18n._lang = None
+
+
+@pytest.fixture(autouse=True)
 def no_real_adapters(monkeypatch):
     """Tests don't depend on this machine's network adapters (masks differ between machines)."""
     monkeypatch.setattr(discovery, "adapter_addresses", lambda: [])

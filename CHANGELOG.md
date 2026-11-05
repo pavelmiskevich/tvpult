@@ -5,6 +5,12 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- English and Russian everywhere (#6): the page picks the browser's language, with a switch in **⚙ settings**
+  (remembered per browser); the command line, its help and the desktop shortcut's name ("TV Remote" /
+  «Пульт ТВ») follow the system language — `TVPULT_LANG=en|ru` overrides. Two JSON dictionaries in the package
+  (`locales/`), embedded into the page by the server, so the PIN screen is translated too; a test checks both
+  have the same keys and placeholders and that every key the code uses exists. Power results and "cable" are
+  now translated on the page instead of shown in English.
 - Settings page (the "⚙" tab): rename or remove TVs and soundbars, connect a TV again (the old pairing token comes
   back if the TV says no), forget its token with directions for removing tvpult from the TV's own device list,
   Wake-on-LAN on/off, "search again" for devices that moved, and pick and order the quick-launch apps from those

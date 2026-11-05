@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111318">
-<title>Пульт</title>
+<title>Remote</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='4' width='20' height='13' rx='2' fill='%232f6df6'/%3E%3Cpath d='M8 21h8' stroke='%232f6df6' stroke-width='2'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -54,6 +54,8 @@
   .qrow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   .qrow button.b { min-height: 40px; width: 44px; flex: none; }
   .tab.gear { flex: 0 0 auto; padding: 10px 12px; }
+  .lang-select { width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--btn-press);
+    background: var(--bg); color: var(--text); font: inherit; padding: 0 10px; margin-top: 4px; }
   .setup-actions { display: flex; gap: 8px; margin-top: 14px; }
   .setup-actions .b { flex: 1; }
   button.b.primary { background: var(--accent); color: var(--accent-text); }
@@ -139,17 +141,17 @@
 </head>
 <body>
 <main>
-  <nav class="tabs" role="tablist" id="tabs"><span class="tab">Загрузка…</span></nav>
+  <nav class="tabs" role="tablist" id="tabs"><span class="tab" data-i18n="loading">Loading…</span></nav>
 
   <!-- Setup wizard: shown when nothing is configured, or from the "+ ТВ" tab -->
   <section id="setup" hidden>
     <div class="card">
-      <h1 class="setup-title">Найдём ваши телевизоры</h1>
-      <p class="setup-msg" id="setupMsg">Ноутбук и телевизоры должны быть в одной сети, телевизоры — включены.</p>
+      <h1 class="setup-title" data-i18n="setup.title"></h1>
+      <p class="setup-msg" id="setupMsg" data-i18n="setup.intro"></p>
       <div class="setup-list" id="setupList"></div>
       <div class="setup-actions">
-        <button class="b" id="setupScan">Искать снова</button>
-        <button class="b primary" id="setupDone" hidden>Готово</button>
+        <button class="b" id="setupScan" data-i18n="search_again"></button>
+        <button class="b primary" id="setupDone" hidden data-i18n="done"></button>
       </div>
     </div>
   </section>
@@ -157,21 +159,29 @@
   <!-- Settings: devices, names, quick apps, unpairing (from the "⚙" tab) -->
   <section id="settings" hidden>
     <div class="card">
-      <h1 class="setup-title">Настройки</h1>
-      <p class="label">Устройства</p>
+      <h1 class="setup-title" data-i18n="settings"></h1>
+      <p class="label" data-i18n="set.devices"></p>
       <div class="setup-list" id="setDevices"></div>
       <div class="setup-actions">
-        <button class="b" id="setSearch">Искать снова</button>
-        <button class="b" id="setAdd">+ Добавить ТВ</button>
+        <button class="b" id="setSearch" data-i18n="search_again"></button>
+        <button class="b" id="setAdd" data-i18n="set.add_tv"></button>
       </div>
       <p class="setup-msg" id="setSearchMsg" role="status" style="margin:10px 0 0"></p>
     </div>
     <div class="card" style="margin-top:14px">
-      <p class="label">Быстрый запуск</p>
-      <p class="setup-msg">Кнопки над пультом — в этом порядке.</p>
+      <p class="label" data-i18n="set.quick"></p>
+      <p class="setup-msg" data-i18n="set.quick_hint"></p>
       <div class="qlist" id="setQuick"></div>
-      <p class="label" style="margin-top:14px">Добавить</p>
+      <p class="label" style="margin-top:14px" data-i18n="set.add"></p>
       <div class="apps" id="setQuickAdd"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <label class="label" for="setLang" data-i18n="set.language"></label>
+      <select id="setLang" class="lang-select">
+        <option value="" data-i18n="lang.auto"></option>
+        <option value="en" lang="en">English</option>
+        <option value="ru" lang="ru">Русский</option>
+      </select>
     </div>
   </section>
 
@@ -179,7 +189,7 @@
   <section id="tv" hidden>
     <div class="card head">
       <div class="info"><h1 id="tvName">—</h1><p id="tvState">…</p></div>
-      <button class="b power" id="power" aria-label="Питание">
+      <button class="b power" id="power" data-i18n-aria="key.power">
         <svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>
       </button>
     </div>
@@ -188,54 +198,54 @@
 
     <div class="card" style="margin-top:14px">
       <div class="pad">
-        <button class="b" data-key="KEY_MENU" aria-label="Меню"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-        <button class="b" data-key="KEY_UP" aria-label="Вверх"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
-        <button class="b" data-key="KEY_SOURCE" aria-label="Источник"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="m10 10 3 2-3 2"/></svg></button>
-        <button class="b" data-key="KEY_LEFT" aria-label="Влево"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+        <button class="b" data-key="KEY_MENU" data-i18n-aria="key.menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <button class="b" data-key="KEY_UP" data-i18n-aria="key.up"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+        <button class="b" data-key="KEY_SOURCE" data-i18n-aria="key.source"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="m10 10 3 2-3 2"/></svg></button>
+        <button class="b" data-key="KEY_LEFT" data-i18n-aria="key.left"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
         <button class="b ok" data-key="KEY_ENTER" aria-label="OK">OK</button>
-        <button class="b" data-key="KEY_RIGHT" aria-label="Вправо"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
-        <button class="b" data-key="KEY_RETURN" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-        <button class="b" data-key="KEY_DOWN" aria-label="Вниз"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
-        <button class="b" data-key="KEY_HOME" aria-label="Домой"><svg viewBox="0 0 24 24"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/></svg></button>
+        <button class="b" data-key="KEY_RIGHT" data-i18n-aria="key.right"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+        <button class="b" data-key="KEY_RETURN" data-i18n-aria="key.back"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button class="b" data-key="KEY_DOWN" data-i18n-aria="key.down"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="b" data-key="KEY_HOME" data-i18n-aria="key.home"><svg viewBox="0 0 24 24"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10"/></svg></button>
       </div>
       <div class="row4" style="margin-top:8px">
-        <button class="b" data-key="KEY_REWIND" aria-label="Перемотка назад"><svg viewBox="0 0 24 24"><path d="m11 18-7-6 7-6zM20 18l-7-6 7-6z"/></svg></button>
-        <button class="b" data-key="KEY_PLAY" aria-label="Играть"><svg viewBox="0 0 24 24"><path d="m7 5 12 7-12 7z"/></svg></button>
-        <button class="b" data-key="KEY_PAUSE" aria-label="Пауза"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
-        <button class="b" data-key="KEY_FF" aria-label="Вперёд"><svg viewBox="0 0 24 24"><path d="m13 18 7-6-7-6zM4 18l7-6-7-6z"/></svg></button>
+        <button class="b" data-key="KEY_REWIND" data-i18n-aria="key.rewind"><svg viewBox="0 0 24 24"><path d="m11 18-7-6 7-6zM20 18l-7-6 7-6z"/></svg></button>
+        <button class="b" data-key="KEY_PLAY" data-i18n-aria="key.play"><svg viewBox="0 0 24 24"><path d="m7 5 12 7-12 7z"/></svg></button>
+        <button class="b" data-key="KEY_PAUSE" data-i18n-aria="key.pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+        <button class="b" data-key="KEY_FF" data-i18n-aria="key.ff"><svg viewBox="0 0 24 24"><path d="m13 18 7-6-7-6zM4 18l7-6-7-6z"/></svg></button>
       </div>
     </div>
 
     <div class="rockers" style="margin-top:14px">
       <div class="rocker">
-        <button class="b" data-key="KEY_VOLUP" data-repeat aria-label="Громче">+</button>
-        <span>Громк.</span>
-        <button class="b" data-key="KEY_VOLDOWN" data-repeat aria-label="Тише">−</button>
+        <button class="b" data-key="KEY_VOLUP" data-repeat data-i18n-aria="key.volup">+</button>
+        <span data-i18n="vol.short"></span>
+        <button class="b" data-key="KEY_VOLDOWN" data-repeat data-i18n-aria="key.voldown">−</button>
       </div>
       <div class="rocker">
-        <button class="b" data-key="KEY_CHUP" aria-label="Канал вверх"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
-        <span>Канал</span>
-        <button class="b" data-key="KEY_CHDOWN" aria-label="Канал вниз"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="b" data-key="KEY_CHUP" data-i18n-aria="key.chup"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>
+        <span data-i18n="ch.short"></span>
+        <button class="b" data-key="KEY_CHDOWN" data-i18n-aria="key.chdown"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       </div>
     </div>
     <div class="row3">
-      <button class="b" data-key="KEY_MUTE">Без звука</button>
-      <button class="b" data-key="KEY_INFO">Инфо</button>
-      <button class="b" data-key="KEY_EXIT">Выход</button>
+      <button class="b" data-key="KEY_MUTE" data-i18n="key.mute"></button>
+      <button class="b" data-key="KEY_INFO" data-i18n="key.info"></button>
+      <button class="b" data-key="KEY_EXIT" data-i18n="key.exit"></button>
     </div>
 
     <form class="card" id="textForm" style="margin-top:14px" autocomplete="off">
-      <p class="label">Ввести текст на ТВ</p>
+      <p class="label" data-i18n="text.title"></p>
       <div class="textrow">
         <input id="textIn" type="text" maxlength="256" autocomplete="off" autocapitalize="off" spellcheck="false"
-               placeholder="Сначала открой поле ввода на ТВ" aria-label="Текст для ТВ">
-        <button class="b" type="submit" id="textSend">Ввести</button>
+               data-i18n-ph="text.placeholder" data-i18n-aria="text.aria">
+        <button class="b" type="submit" id="textSend" data-i18n="text.send"></button>
       </div>
-      <label class="check"><input type="checkbox" id="textSubmit" checked> и нажать «Готово»</label>
+      <label class="check"><input type="checkbox" id="textSubmit" checked> <span data-i18n="text.submit"></span></label>
     </form>
 
     <div class="card" style="margin-top:14px">
-      <p class="label">Приложения</p>
+      <p class="label" data-i18n="apps"></p>
       <div class="apps" id="apps"></div>
     </div>
   </section>
@@ -246,47 +256,47 @@
       <div class="info"><h1 id="barName">—</h1><p id="barState">…</p></div>
     </div>
     <div class="card" style="margin-top:14px">
-      <p class="label">Громкость</p>
+      <p class="label" data-i18n="bar.volume"></p>
       <div class="vol">
-        <button class="b" id="barDown" style="width:52px" aria-label="Тише">−</button>
-        <input type="range" id="barVol" min="0" max="100" step="1" aria-label="Громкость">
-        <button class="b" id="barUp" style="width:52px" aria-label="Громче">+</button>
+        <button class="b" id="barDown" style="width:52px" data-i18n-aria="key.voldown">−</button>
+        <input type="range" id="barVol" min="0" max="100" step="1" data-i18n-aria="bar.volume">
+        <button class="b" id="barUp" style="width:52px" data-i18n-aria="key.volup">+</button>
         <output id="barVolOut">–</output>
       </div>
-      <button class="b" id="barMute" style="width:100%;margin-top:12px">Выключить звук</button>
+      <button class="b" id="barMute" style="width:100%;margin-top:12px"></button>
     </div>
   </section>
 
   <!-- Phone on the home network: PIN sign-in (shown only when the server asks for it) -->
   <section id="pin" hidden>
     <form class="card" id="pinForm" autocomplete="off">
-      <h1 class="setup-title">Вход с телефона</h1>
-      <p class="setup-msg">Введите PIN — он показан на экране компьютера, где запущен пульт.</p>
+      <h1 class="setup-title" data-i18n="pin.title"></h1>
+      <p class="setup-msg" data-i18n="pin.intro"></p>
       <input id="pinIn" class="pin-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
              autocomplete="one-time-code" aria-label="PIN" placeholder="••••••">
-      <button class="b primary" type="submit" id="pinGo" style="width:100%;margin-top:12px">Войти</button>
+      <button class="b primary" type="submit" id="pinGo" style="width:100%;margin-top:12px" data-i18n="pin.go"></button>
       <p class="pin-msg" id="pinMsg" role="status"></p>
     </form>
   </section>
 
   <!-- On this computer only: how to open the remote on a phone -->
   <details class="card phone" id="phone" hidden>
-    <summary>📱 Пульт на телефоне</summary>
+    <summary data-i18n="phone.summary"></summary>
     <div class="phone-body">
-      <img id="lanQr" alt="QR-код с адресом пульта" width="180" height="180">
+      <img id="lanQr" data-i18n-alt="phone.qr_alt" width="180" height="180">
       <div class="phone-info">
-        <p class="setup-msg">Телефон в той же сети Wi-Fi: наведите камеру на QR-код или откройте</p>
+        <p class="setup-msg" data-i18n="phone.scan"></p>
         <p class="lan-url" id="lanUrl"></p>
-        <p class="setup-msg">PIN для входа</p>
+        <p class="setup-msg" data-i18n="phone.pin"></p>
         <p class="lan-pin" id="lanPin"></p>
-        <button class="b" id="lanNewPin" type="button">Новый PIN</button>
+        <button class="b" id="lanNewPin" type="button" data-i18n="phone.new_pin"></button>
       </div>
     </div>
-    <p class="label" style="margin-top:12px">Вошедшие телефоны</p>
+    <p class="label" style="margin-top:12px" data-i18n="phone.sessions"></p>
     <div id="lanSessions" class="sessions"></div>
   </details>
 
-  <p class="hint" id="hint">Стрелки, Enter, Backspace (назад), H (домой) работают с клавиатуры</p>
+  <p class="hint" id="hint" data-i18n="hint"></p>
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -295,10 +305,48 @@
 const $ = (id) => document.getElementById(id);
 const state = { devices: [], quick: [], sel: null, busy: false, setupOpen: false, setupAuto: true, needPin: false,
   settingsOpen: false, settingsDirty: false, armed: null, setMsg: {} };
-const APP_LABELS = { youtube: "YouTube", kinopoisk: "Кинопоиск", premier: "Премьер", okko: "Okko",
-  browser: "Браузер", netflix: "Netflix", prime: "Prime Video", ivi: "Иви", wink: "Wink", start: "START",
-  kion: "КИОН", rutube: "RUTUBE", vkvideo: "VK Видео", moretv: "more.tv" };
 try { state.sel = localStorage.getItem("tvpult.sel"); } catch (_) {}
+
+// --- languages: English and Russian; the server embeds both dictionaries here ---------------------
+const I18N = /*TVPULT_I18N*/null;
+const LANG_KEY = "tvpult.lang";  // "", "en" or "ru": the switch in the settings ("" = as in the browser)
+function langChoice() { try { return localStorage.getItem(LANG_KEY) || ""; } catch (_) { return ""; } }
+function pickLang() {
+  const choice = langChoice();
+  if (choice === "en" || choice === "ru") return choice;
+  for (const l of navigator.languages || [navigator.language || ""]) {
+    const p = String(l).toLowerCase().slice(0, 2);
+    if (p === "ru" || p === "en") return p;
+  }
+  return "en";
+}
+let LANG = pickLang();
+// t("key", {name: "x"}): the text in the page's language, {placeholders} filled in (values are never re-read).
+function t(key, vars) {
+  const dict = (I18N && I18N[LANG]) || {}, en = (I18N && I18N.en) || {};
+  const text = dict[key] ?? en[key] ?? key;
+  return vars ? text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text;
+}
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.title = t("title");
+  document.querySelectorAll("[data-i18n]").forEach((n) => (n.textContent = t(n.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-aria]").forEach((n) => n.setAttribute("aria-label", t(n.dataset.i18nAria)));
+  document.querySelectorAll("[data-i18n-ph]").forEach((n) => (n.placeholder = t(n.dataset.i18nPh)));
+  document.querySelectorAll("[data-i18n-alt]").forEach((n) => (n.alt = t(n.dataset.i18nAlt)));
+  $("setLang").value = langChoice();
+}
+applyLang();
+$("setLang").onchange = () => {
+  try { localStorage.setItem(LANG_KEY, $("setLang").value); } catch (_) {}
+  LANG = pickLang(); applyLang();
+  state.settingsDirty = true; render(); loadLan();
+};
+const APP_KEYS = new Set(I18N ? Object.keys(I18N.en).filter((k) => k.startsWith("app.")).map((k) => k.slice(4)) : []);
+// Known services get a fixed name per language; anything else: the name the TV reports.
+const appName = (alias, fallback) => (APP_KEYS.has(alias) ? t("app." + alias) : fallback || alias);
+const POWER = { "already on": "power.already_on", "woken from standby": "power.woken",
+  "wake-on-lan sent": "power.wol_sent", "already off": "power.already_off", "turned off": "power.turned_off" };
 
 async function api(path, body) {
   const opt = body === undefined ? {} : {
@@ -308,7 +356,7 @@ async function api(path, body) {
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && data.error === "pin_required") {  // a phone on the home network, not signed in yet
     if (!state.needPin) { state.needPin = true; render(); }
-    const e = new Error("Нужен PIN"); e.pin = true; throw e;
+    const e = new Error(t("pin.needed")); e.pin = true; throw e;
   }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -318,15 +366,15 @@ async function api(path, body) {
 $("pinForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const pin = $("pinIn").value.replace(/\D/g, "");
-  if (pin.length !== 6) { $("pinMsg").textContent = "PIN — 6 цифр"; return; }
+  if (pin.length !== 6) { $("pinMsg").textContent = t("pin.six"); return; }
   $("pinGo").disabled = true; $("pinMsg").textContent = "";
   try {
     await api("/api/login", { pin });
     state.needPin = false; $("pinIn").value = "";
     hello(); refresh();
   } catch (err) {
-    $("pinMsg").textContent = err.message === "wrong PIN" ? "Неверный PIN" :
-      err.message.startsWith("too many") ? "Слишком много попыток — подождите 10 минут" : err.message;
+    $("pinMsg").textContent = err.message === "wrong PIN" ? t("pin.wrong") :
+      err.message.startsWith("too many") ? t("pin.locked") : err.message;
   } finally {
     $("pinGo").disabled = false;
   }
@@ -344,23 +392,23 @@ async function loadLan() {
   if (!info.enabled) return;
   $("lanQr").src = info.qr; $("lanUrl").textContent = info.url; $("lanPin").textContent = info.pin;
   const list = $("lanSessions");
-  if (!info.sessions.length) { list.replaceChildren(el("span", "setup-msg", "Пока никто не входил")); return; }
+  if (!info.sessions.length) { list.replaceChildren(el("span", "setup-msg", t("phone.none"))); return; }
   list.replaceChildren(...info.sessions.map((s) => {
     const row = el("div", "sess");
-    const when = new Date(s.created * 1000).toLocaleDateString();
-    row.append(el("span", null, (s.label || "Телефон") + " · " + when));
-    const b = el("button", "b", "Отозвать");
-    b.onclick = () => act(() => api("/api/lan/revoke", { id: s.id }).then(loadLan), "Доступ отозван", { refreshAfter: 0 });
+    const when = new Date(s.created * 1000).toLocaleDateString(LANG);
+    row.append(el("span", null, (s.label || t("phone.default")) + " · " + when));
+    const b = el("button", "b", t("phone.revoke"));
+    b.onclick = () => act(() => api("/api/lan/revoke", { id: s.id }).then(loadLan), t("phone.revoked"), { refreshAfter: 0 });
     row.append(b);
     return row;
   }));
 }
-$("lanNewPin").onclick = () => act(() => api("/api/lan/pin", {}).then(loadLan), "Новый PIN", { refreshAfter: 0 });
+$("lanNewPin").onclick = () => act(() => api("/api/lan/pin", {}).then(loadLan), t("phone.new_pin"), { refreshAfter: 0 });
 
 let toastTimer;
 function toast(msg) {
-  const t = $("toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  const box = $("toast"); box.textContent = msg; box.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => box.classList.remove("show"), 2600);
 }
 const buzz = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (_) {} };
 const current = () => state.devices.find((d) => d.id === state.sel);
@@ -387,21 +435,17 @@ function renderTabs() {
     return b;
   });
   const add = document.createElement("button");
-  add.className = "tab add"; add.textContent = "+ ТВ"; add.title = "Найти и подключить телевизор";
+  add.className = "tab add"; add.textContent = t("tab.add"); add.title = t("tab.add_title");
   add.setAttribute("aria-selected", String(state.setupOpen));
   add.onclick = () => openSetup();
   const gear = document.createElement("button");
-  gear.className = "tab gear"; gear.textContent = "⚙"; gear.title = "Настройки";
-  gear.setAttribute("aria-label", "Настройки"); gear.setAttribute("aria-selected", String(state.settingsOpen));
+  gear.className = "tab gear"; gear.textContent = "⚙"; gear.title = t("settings");
+  gear.setAttribute("aria-label", t("settings")); gear.setAttribute("aria-selected", String(state.settingsOpen));
   gear.onclick = () => openSettings();
   nav.replaceChildren(...tabs, add, gear);
 }
 
 // --- settings -------------------------------------------------------------------------
-const KIND_LABEL = { tv: "Телевизор", soundbar: "Саундбар" };
-const UNPAIR_HINT = "Пульт забыл ключ доступа к этому ТВ. Чтобы убрать tvpult и из списка самого телевизора: " +
-  "Настройки → Общие → Диспетчер внешних устройств → Диспетчер подключения устройств → Список устройств " +
-  "(названия пунктов немного отличаются по годам).";
 
 function openSettings() {
   state.settingsOpen = true; state.setupOpen = false; state.settingsDirty = true;
@@ -410,9 +454,8 @@ function openSettings() {
 }
 
 function appLabel(alias) {
-  if (APP_LABELS[alias]) return APP_LABELS[alias];
-  for (const d of state.devices) for (const a of d.apps || []) if (a.alias === alias) return a.name;
-  return alias;
+  for (const d of state.devices) for (const a of d.apps || []) if (a.alias === alias) return appName(alias, a.name);
+  return appName(alias);
 }
 
 // Run a settings change, then show the new state at once (and re-read it from the server).
@@ -431,34 +474,35 @@ async function settingsAct(fn, okMsg) {
 function renderSettings() {
   state.settingsDirty = false;
   $("setDevices").replaceChildren(...(state.devices.length
-    ? state.devices.map(deviceCard) : [el("p", "setup-msg", "Устройств пока нет — добавьте телевизор.")]));
+    ? state.devices.map(deviceCard) : [el("p", "setup-msg", t("set.no_devices"))]));
   renderQuickSettings();
 }
 
 function deviceCard(d) {
   const card = el("div", "cand");
   card.append(el("h2", null, d.name));
-  const meta = [KIND_LABEL[d.kind], d.model, d.host];
-  if (d.kind === "tv") meta.push(d.paired ? "подключён" : "не подключён");
+  const meta = [t("kind." + d.kind), d.model, d.host];
+  if (d.kind === "tv") meta.push(d.paired ? t("paired") : t("not_paired"));
   card.append(el("div", "meta", meta.filter(Boolean).join(" · ")));
 
   const msg = el("div", "wait");
-  const say = (cls, text) => {  // kept across re-renders until the next action on this device
-    state.setMsg[d.id] = text ? { cls, text } : undefined;
-    msg.className = cls; msg.textContent = text || ""; msg.hidden = !text;
+  // kept across re-renders until the next action on this device; stored as a key, so a language switch applies
+  const say = (cls, key, vars) => {
+    state.setMsg[d.id] = key ? { cls, key, vars } : undefined;
+    msg.className = cls || "wait"; msg.textContent = key ? t(key, vars) : ""; msg.hidden = !key;
   };
   const old = state.setMsg[d.id];
-  say(old ? old.cls : "wait", old ? old.text : "");
+  if (old) say(old.cls, old.key, old.vars); else say();
 
   const row = el("div", "row");
   const input = el("input");
   input.type = "text"; input.maxLength = 40; input.value = d.name;
-  input.setAttribute("aria-label", "Имя: " + d.name);
-  const save = el("button", "b", "Сохранить");
+  input.setAttribute("aria-label", t("name_aria", { name: d.name }));
+  const save = el("button", "b", t("save"));
   save.disabled = true;
   input.oninput = () => { save.disabled = !input.value.trim() || input.value.trim() === d.name; };
   const doSave = () => { say(); settingsAct(() => api("/api/settings/device",
-    { kind: d.kind, id: d.id, name: input.value.trim() }), "Имя сохранено"); };
+    { kind: d.kind, id: d.id, name: input.value.trim() }), t("name_saved")); };
   save.onclick = doSave;
   input.onkeydown = (e) => { if (e.key === "Enter" && !save.disabled) doSave(); };
   row.append(input, save);
@@ -468,38 +512,38 @@ function deviceCard(d) {
     const lab = el("label", "check");
     const cb = el("input");
     cb.type = "checkbox"; cb.checked = !!d.wake_on_lan; cb.disabled = !d.has_mac && !d.wake_on_lan;
-    lab.title = d.has_mac ? "Нужна настройка ТВ «Включение с мобильного»" : "MAC-адрес ТВ неизвестен";
+    lab.title = d.has_mac ? t("wol.need_setting") : t("wol.no_mac");
     cb.onchange = () => { say(); settingsAct(() => api("/api/settings/device",
       { kind: "tv", id: d.id, wake_on_lan: cb.checked }),
-      cb.checked ? "Будет включаться по сети" : "Включение по сети выключено"); };
-    lab.append(cb, document.createTextNode("Включать по сети (Wake-on-LAN)"));
+      cb.checked ? t("wol.on") : t("wol.off")); };
+    lab.append(cb, document.createTextNode(t("wol.label")));
     card.append(lab);
   }
 
   const acts = el("div", "row wrap");
   if (d.kind === "tv") {
-    const pair = el("button", "b", d.paired ? "Подключить заново" : "Подключить");
+    const pair = el("button", "b", d.paired ? t("pair.again") : t("pair.connect"));
     pair.onclick = async () => {
       buzz(); pair.disabled = true;
-      say("wait", "Смотрите на экран телевизора: если спросит — нажмите «Разрешить» (до 45 секунд)…");
-      try { await api("/api/settings/pair", { kind: "tv", id: d.id }); say("ok", "Подключён ✓"); }
-      catch (e) { say("note", "Не подключился: " + e.message); }
+      say("wait", "pair.look_maybe");
+      try { await api("/api/settings/pair", { kind: "tv", id: d.id }); say("ok", "pair.ok"); }
+      catch (e) { say("note", "pair.failed", { error: e.message }); }
       state.settingsDirty = true; refresh();
     };
     acts.append(pair);
     if (d.paired) {
-      const unpair = el("button", "b", "Отключить");
+      const unpair = el("button", "b", t("unpair"));
       unpair.onclick = async () => {
         buzz();
-        try { await api("/api/settings/unpair", { kind: "tv", id: d.id }); say("wait", UNPAIR_HINT); }
-        catch (e) { say("note", e.message); }
+        try { await api("/api/settings/unpair", { kind: "tv", id: d.id }); say("wait", "unpair.hint"); }
+        catch (e) { say("note", "pair.failed", { error: e.message }); }
         state.settingsDirty = true; refresh();
       };
       acts.append(unpair);
     }
   }
   const armed = state.armed === d.id;
-  const del = el("button", "b" + (armed ? " danger" : ""), armed ? "Точно удалить?" : "Удалить");
+  const del = el("button", "b" + (armed ? " danger" : ""), armed ? t("del.sure") : t("del"));
   del.onclick = () => {
     if (!armed) {  // two taps instead of a dialog: the first one only asks
       state.armed = d.id; state.settingsDirty = true; render();
@@ -507,7 +551,7 @@ function deviceCard(d) {
       return;
     }
     state.armed = null; delete state.setMsg[d.id];
-    settingsAct(() => api("/api/settings/remove", { kind: d.kind, id: d.id }), d.name + ": удалён");
+    settingsAct(() => api("/api/settings/remove", { kind: d.kind, id: d.id }), t("del.done", { name: d.name }));
   };
   acts.append(del);
   card.append(acts, msg);
@@ -527,11 +571,11 @@ function renderQuickSettings() {
     const row = el("div", "qrow");
     const name = appLabel(alias);
     row.append(el("span", null, name),
-      small("↑", "Выше: " + name, () => move(i, i - 1), i === 0),
-      small("↓", "Ниже: " + name, () => move(i, i + 1), i === chosen.length - 1),
-      small("✕", "Убрать: " + name, () => save(chosen.filter((a) => a !== alias))));
+      small("↑", t("quick.up", { name }), () => move(i, i - 1), i === 0),
+      small("↓", t("quick.down", { name }), () => move(i, i + 1), i === chosen.length - 1),
+      small("✕", t("quick.remove", { name }), () => save(chosen.filter((a) => a !== alias))));
     return row;
-  }) : [el("p", "setup-msg", "Пусто — добавьте приложения ниже.")]));
+  }) : [el("p", "setup-msg", t("quick.empty"))]));
   const avail = new Map();
   for (const d of state.devices) {
     for (const a of d.apps || []) if (!chosen.includes(a.alias) && !avail.has(a.alias)) avail.set(a.alias, appLabel(a.alias));
@@ -541,20 +585,19 @@ function renderQuickSettings() {
     b.disabled = chosen.length >= 12;
     b.onclick = () => save([...chosen, alias]);
     return b;
-  }) : [el("p", "setup-msg", "Включите телевизор — здесь появятся его приложения.")]));
+  }) : [el("p", "setup-msg", t("quick.no_apps"))]));
 }
 
 $("setAdd").onclick = () => openSetup();
 $("setSearch").onclick = async () => {
   const btn = $("setSearch"), msg = $("setSearchMsg");
-  btn.disabled = true; msg.textContent = "Ищу устройства в сети…";
+  btn.disabled = true; msg.textContent = t("search.running");
   try {
     const r = await api("/api/settings/search", {});
     const n = Object.keys(r.found).length;
-    msg.textContent = r.recent ? "Только что искали — попробуйте через несколько секунд."
-      : n ? "Найдено в сети: " + n + " из " + state.devices.length + "."
-      : "Ни одно устройство не ответило — они включены?";
-  } catch (e) { msg.textContent = "Не получилось поискать: " + e.message; }
+    msg.textContent = r.recent ? t("search.recent")
+      : n ? t("search.found", { n, total: state.devices.length }) : t("search.none");
+  } catch (e) { msg.textContent = t("search.failed", { error: e.message }); }
   btn.disabled = false;
   state.settingsDirty = true; refresh();
 };
@@ -569,18 +612,18 @@ function openSetup() {
 async function scanTvs() {
   const list = $("setupList"), msg = $("setupMsg"), btn = $("setupScan");
   btn.disabled = true;
-  msg.textContent = "Ищу телевизоры в сети…";
+  msg.textContent = t("setup.searching");
   list.replaceChildren();
   try {
     const { tvs } = await api("/api/setup/scan", {});
     if (!tvs.length) {
-      msg.textContent = "Телевизоров Samsung не найдено. Включите их и проверьте, что ноутбук в той же сети.";
+      msg.textContent = t("setup.none");
     } else {
-      msg.textContent = "Найдено: " + tvs.length + ". Дайте телевизору имя и нажмите «Подключить».";
+      msg.textContent = t("setup.found", { n: tvs.length });
       list.replaceChildren(...tvs.map(candidateCard));
     }
   } catch (e) {
-    msg.textContent = "Не получилось поискать: " + e.message;
+    msg.textContent = t("search.failed", { error: e.message });
   } finally {
     btn.disabled = false;
   }
@@ -593,31 +636,31 @@ function el(tag, cls, text) {
   return n;
 }
 
-function candidateCard(t) {
+function candidateCard(tv) {
   const card = el("div", "cand");
-  card.append(el("h2", null, t.name || t.model || "Samsung TV"));
-  card.append(el("div", "meta", [t.model, t.year, t.host].filter(Boolean).join(" · ")));
-  if (t.configured) { card.append(el("div", "ok", "Уже подключён")); return card; }
-  if (!t.confirmed) { card.append(el("div", "note", t.note || "Сеть не подтвердила этот телевизор")); return card; }
+  card.append(el("h2", null, tv.name || tv.model || "Samsung TV"));
+  card.append(el("div", "meta", [tv.model, tv.year, tv.host].filter(Boolean).join(" · ")));
+  if (tv.configured) { card.append(el("div", "ok", t("setup.already"))); return card; }
+  if (!tv.confirmed) { card.append(el("div", "note", tv.note || t("setup.unconfirmed"))); return card; }
   const row = el("div", "row");
   const input = el("input");
-  input.type = "text"; input.maxLength = 40; input.value = ""; input.placeholder = "Имя: Гостиная";
-  input.setAttribute("aria-label", "Имя телевизора");
-  const go = el("button", "b primary", "Подключить");
+  input.type = "text"; input.maxLength = 40; input.value = ""; input.placeholder = t("setup.name_ph");
+  input.setAttribute("aria-label", t("setup.name_aria"));
+  const go = el("button", "b primary", t("pair.connect"));
   const status = el("div", "wait");
   status.hidden = true;
   go.onclick = async () => {
     go.disabled = true; input.disabled = true;
     status.hidden = false; status.className = "wait";
-    status.textContent = "Смотрите на экран телевизора и нажмите «Разрешить» (до 45 секунд)…";
+    status.textContent = t("pair.look");
     try {
-      await api("/api/setup/pair", { cid: t.cid, name: input.value.trim() || t.model || "Телевизор" });
-      status.className = "ok"; status.textContent = "Подключён ✓";
+      await api("/api/setup/pair", { cid: tv.cid, name: input.value.trim() || tv.model || t("tv.default") });
+      status.className = "ok"; status.textContent = t("pair.ok");
       row.remove();
       $("setupDone").hidden = false;
       refreshSoon(300);
     } catch (e) {
-      status.className = "note"; status.textContent = "Не подключился: " + e.message;
+      status.className = "note"; status.textContent = t("pair.failed", { error: e.message });
       go.disabled = false; input.disabled = false;
     }
   };
@@ -632,11 +675,11 @@ $("setupDone").onclick = () => { state.setupOpen = false; $("setupDone").hidden 
 function renderTv(d) {
   $("tvName").textContent = d.name;
   let s;
-  if (!d.online) s = d.wake_on_lan ? "Выключен — можно включить отсюда" : "Выключен — включи пультом";
-  else if (d.power !== "on") s = "Режим ожидания";
-  else s = d.current_app ? "На экране: " + d.current_app : (d.model || "Включён");
-  if (d.online && d.network) s += " · " + d.network;
-  if (d.online && !d.paired) s += " · не сопряжён";
+  if (!d.online) s = d.wake_on_lan ? t("tv.off_wol") : t("tv.off");
+  else if (d.power !== "on") s = t("tv.standby");
+  else s = d.current_app ? t("tv.on_screen", { app: d.current_app }) : (d.model || t("tv.on"));
+  if (d.online && (d.wired || d.network)) s += " · " + (d.wired ? t("tv.cable") : d.network);
+  if (d.online && !d.paired) s += " · " + t("tv.not_paired");
   $("tvState").textContent = s;
   const on = d.online && d.power === "on";
   $("power").classList.toggle("off", !on);
@@ -645,14 +688,14 @@ function renderTv(d) {
   ["textIn", "textSend"].forEach((id) => ($(id).disabled = !on));
   renderQuick(d, on);
   const apps = $("apps");
-  if (!on) { apps.innerHTML = '<span class="empty">ТВ выключен</span>'; return; }
+  if (!on) { apps.replaceChildren(el("span", "empty", t("tv.is_off"))); return; }
   const rest = (d.apps || []).filter((a) => !state.quick.includes(a.alias));
   apps.closest(".card").hidden = !rest.length && on;
-  if (!rest.length) { apps.innerHTML = '<span class="empty">Нет других известных приложений</span>'; return; }
+  if (!rest.length) { apps.replaceChildren(el("span", "empty", t("tv.no_more_apps"))); return; }
   apps.replaceChildren(...rest.map((a) => {
     const b = document.createElement("button");
-    b.className = "b" + (a.name === d.current_app ? " current" : ""); b.textContent = APP_LABELS[a.alias] || a.name;
-    b.onclick = () => act(() => api(`/api/tv/${d.id}/launch`, { app: a.alias }), "Открываю " + a.name);
+    b.className = "b" + (a.name === d.current_app ? " current" : ""); b.textContent = appName(a.alias, a.name);
+    b.onclick = () => act(() => api(`/api/tv/${d.id}/launch`, { app: a.alias }), t("app.opening", { name: b.textContent }));
     return b;
   }));
 }
@@ -663,12 +706,12 @@ function renderQuick(d, on) {
     const a = installed[alias];
     const b = document.createElement("button");
     b.className = "b" + (a && a.name === d.current_app ? " current" : "") + (on && !a ? " missing" : "");
-    b.textContent = APP_LABELS[alias] || (a ? a.name : alias);
+    b.textContent = appName(alias, a && a.name);
     b.disabled = !on;
-    if (on && !a) b.title = "Не найдено на этом ТВ";
+    if (on && !a) b.title = t("app.missing_title");
     b.onclick = () => a
-      ? act(() => api(`/api/tv/${d.id}/launch`, { app: alias }), "Открываю " + b.textContent)
-      : toast(b.textContent + ": не найдено на этом ТВ");
+      ? act(() => api(`/api/tv/${d.id}/launch`, { app: alias }), t("app.opening", { name: b.textContent }))
+      : toast(t("app.missing", { name: b.textContent }));
     return b;
   }));
 }
@@ -676,9 +719,9 @@ function renderQuick(d, on) {
 let dragging = false;
 function renderBar(d) {
   $("barName").textContent = d.name;
-  $("barState").textContent = !d.online ? "Недоступен" : (d.app ? "Играет: " + d.app : "В сети");
+  $("barState").textContent = !d.online ? t("bar.offline") : (d.app ? t("bar.playing", { app: d.app }) : t("bar.online"));
   if (!dragging && typeof d.volume === "number") { $("barVol").value = d.volume; $("barVolOut").textContent = d.volume; }
-  $("barMute").textContent = d.muted ? "Включить звук" : "Выключить звук";
+  $("barMute").textContent = d.muted ? t("bar.unmute") : t("bar.mute");
   ["barVol", "barUp", "barDown", "barMute"].forEach((id) => ($(id).disabled = !d.online));
 }
 
@@ -714,7 +757,7 @@ async function refresh() {
     if (s.setup && state.setupAuto) { state.setupAuto = false; openSetup(); return; }  // first run: the wizard
     render();
   }
-  catch (e) { if (!e.pin) toast("Нет связи с ноутбуком: " + e.message); }
+  catch (e) { if (!e.pin) toast(t("no_link", { error: e.message })); }
 }
 
 let refreshTimer;
@@ -745,7 +788,7 @@ document.querySelectorAll("[data-key]").forEach((b) => {
 
 $("power").onclick = () => {
   const d = current(); const on = d.online && d.power === "on";
-  act(() => api(`/api/tv/${d.id}/power`, { on: !on }).then((r) => toast(r.result)));
+  act(() => api(`/api/tv/${d.id}/power`, { on: !on }).then((r) => toast(POWER[r.result] ? t(POWER[r.result]) : r.result)));
 };
 
 $("textForm").addEventListener("submit", (e) => {
@@ -753,7 +796,7 @@ $("textForm").addEventListener("submit", (e) => {
   const d = current(); const text = $("textIn").value;
   if (!d || !text) return;
   act(() => api(`/api/tv/${d.id}/text`, { text, submit: $("textSubmit").checked })
-    .then(() => { $("textIn").value = ""; }), "Текст отправлен", { refreshAfter: 0 });
+    .then(() => { $("textIn").value = ""; }), t("text.sent"), { refreshAfter: 0 });
 });
 
 const barVol = $("barVol");
