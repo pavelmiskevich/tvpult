@@ -28,8 +28,11 @@ Please **don't open a public issue**. Use GitHub's private reporting:
   intercept much more than tvpult.
 - **The TV's own TLS certificate is not pinned** yet (issue #14).
 - Anyone with access to your user account on the computer can read the pairing tokens and use the remote.
+- A signed-in phone (`--lan`) or a Tailscale device (`--tailnet`) has the same rights as the computer, except for
+  the PIN and the list of signed-in phones: it can also change the settings (rename, remove, re-pair devices).
+  Give the PIN only to people you'd hand the TV remote to.
 
 ## Undo everything
 
-Remove `tvpult` from the TV's connected-devices list (Settings → Connection → External Device Manager →
-Device Connection Manager → Device List), delete the data folder (`tvpult paths` shows it), uninstall tvpult.
+In the remote, **⚙ → Remove** each device. On each TV remove `tvpult` from its device list
+(Settings → General (on 2022+ sets: Connection) → External Device Manager → Device Connection Manager → Device List; names vary a little by year). Delete the data folder (`tvpult paths` shows it), uninstall tvpult.

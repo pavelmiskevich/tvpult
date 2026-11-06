@@ -1,0 +1,59 @@
+name: My TV is not found
+description: tvpult doesn't see a Samsung TV, or sees it but won't connect.
+title: "TV not found: "
+labels: ["type: 🐛 bug", "area: discovery"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! The answers below are usually enough to tell why. **Remove MAC addresses and ids** from anything
+        you paste — they identify your devices.
+  - type: input
+    id: model
+    attributes:
+      label: TV model
+      description: From the TV's Settings → Support → About This TV, e.g. QE65Q80C, UE43TU7100.
+    validations:
+      required: true
+  - type: input
+    id: year
+    attributes:
+      label: Model year
+      description: If you know it. The first two digits of the platform code in the answer below (`22_…` → 2022).
+  - type: dropdown
+    id: network
+    attributes:
+      label: How is the TV connected?
+      options:
+        - Wi-Fi
+        - Cable (Ethernet)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: find
+    attributes:
+      label: Output of `tvpult find --all`
+      description: Run it on the computer with tvpult while the TV is on. Remove MAC addresses.
+      render: text
+  - type: textarea
+    id: api
+    attributes:
+      label: The TV's answer at `http://<tv-address>:8001/api/v2/`
+      description: |
+        Open that address in a browser on the same network (the TV's address is in your router or in the TV's
+        network settings). Paste the answer and **remove** `wifiMac`, `id`, `duid` and `ip`. If the page doesn't
+        open at all, say so — that is useful too.
+      render: json
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens?
+      description: What you did, what you expected, what you saw (a screenshot of the page helps).
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Computer
+      description: "Windows / macOS / Linux, and the output of `tvpult --version`."

@@ -105,3 +105,13 @@ def test_module_entry_point_exists():
     import importlib.util
 
     assert importlib.util.find_spec("tvpult.__main__") is not None
+
+
+def test_version_flag(capsys):
+    import pytest
+
+    from tvpult.cli import main
+
+    with pytest.raises(SystemExit) as e:
+        main(["--version"])
+    assert e.value.code == 0 and capsys.readouterr().out.startswith("tvpult ")
