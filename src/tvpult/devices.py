@@ -79,7 +79,9 @@ class SamsungTv:
         # Only the long-running server pre-opens the remote channel. One-shot CLI
         # commands must not: every new connection can make the TV ask "Allow?" again.
         self.keep_alive = keep_alive
-        self._catalog = app_catalog(extra_apps)
+        self._extra_apps = extra_apps or {}
+        self._catalog = app_catalog(self._extra_apps)  # which aliases exist; the probing order depends on the year
+        self.year: int | None = None  # model year, from the platform code the TV reports ("22_…" -> 2022)
         self._http = requests.Session()
         self._http.trust_env = False  # never route LAN calls through a proxy
         self._lock = threading.Lock()
@@ -121,6 +123,7 @@ class SamsungTv:
         return data.get("device", {})
 
     def _check_identity(self, dev: dict[str, Any]) -> bool:
+        self.year = discovery.model_year(dev.get("model")) or self.year
         want = discovery.normalize_mac(self.cfg.mac)
         if not want:  # no MAC configured: nothing to check against
             self._identity.ok(self.host)
@@ -155,7 +158,7 @@ class SamsungTv:
         if not refresh and self._apps is not None and time.time() - self._apps_at < APP_CACHE_SECONDS:
             return self._apps
         found = []
-        for alias, ids in self._catalog.items():
+        for alias, ids in app_catalog(self._extra_apps, self.year).items():  # ids seen on this year first
             for app_id in ids:
                 try:
                     st = self._rest(f"applications/{app_id}")

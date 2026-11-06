@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in tvpult doesn't work as it should.
+labels: ["type: 🐛 bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security problem? Please **don't** open an issue — use private reporting (see SECURITY.md).
+        TV not found? There is a separate form for that.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the remote from the shortcut
+        2. …
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The end of `tvpult.log` in the data folder (`tvpult paths` shows where), or the command's output.
+        Remove MAC addresses, ids and anything personal.
+      render: text
+  - type: input
+    id: tv
+    attributes:
+      label: TV model and year
+  - type: input
+    id: system
+    attributes:
+      label: Computer, browser and tvpult version
+      description: "e.g. Windows 11, Edge, the output of `tvpult --version`."
