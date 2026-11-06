@@ -257,7 +257,7 @@ def test_shortcut_with_lan_adds_the_flag(monkeypatch, tmp_path):
      "Android · Samsung Internet"),
     ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0",
      "Windows · Edge"),
-    ("", "Телефон"), (None, "Телефон"),
+    ("", ""), (None, ""),
 ])
 def test_device_label(ua, label):
     from tvpult.auth import device_label

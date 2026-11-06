@@ -32,12 +32,12 @@ Needs [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 and the depen
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-uv run tvpult shortcut    # creates the desktop shortcut "Пульт ТВ"
+uv run tvpult shortcut    # creates the desktop shortcut "TV Remote" («Пульт ТВ» on a Russian system)
 ```
 
 Switch the TVs on and double-click the shortcut. The first time, a **setup screen** finds every Samsung TV
 on your network: give each a name, click **Connect**, press **Allow** on the TV — done, that's your remote.
-More TVs later: the **+ ТВ** tab. Everyday changes are in **⚙ settings**: rename or remove devices, connect a TV
+More TVs later: the **+ TV** tab. Everyday changes are in **⚙ settings**: rename or remove devices, connect a TV
 again or forget it, Wake-on-LAN on/off, "search again", and which apps sit in the quick-launch row and in what
 order. No files to edit. (Without the shortcut: `uv run tvpult serve` and open
 http://127.0.0.1:8765/.)
@@ -46,6 +46,10 @@ Your files live in your user folder, not next to the code: `tvpult paths` shows 
 (Windows: `%LOCALAPPDATA%\tvpult`; Linux: `~/.config/tvpult` and `~/.local/share/tvpult`).
 `--config` / `--data-dir` or `TVPULT_CONFIG` / `TVPULT_DATA_DIR` override that.
 The command line can do the same: `tvpult find --all` lists every TV, `tvpult init` starts a config by hand.
+
+**English and Russian.** The page follows the browser's language; **⚙ → Language** switches it (remembered
+per browser). The command line and the shortcut's name follow the system language; `TVPULT_LANG=en` or `ru`
+overrides it.
 
 Command line too: `tvpult status`, `tvpult key living home right ok`, `tvpult launch living youtube`,
 `tvpult vol +5`, `tvpult text living "search words"` — `tvpult --help` for all.

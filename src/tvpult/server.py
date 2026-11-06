@@ -24,6 +24,7 @@ from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey
 from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
 from .devices import DeviceError, Home
+from .i18n import page_strings, t
 
 log = logging.getLogger(__name__)
 
@@ -246,8 +247,15 @@ def origin_ok(origin: str | None, host_header: str | None) -> bool:
     return urlsplit(origin).netloc.lower() == (host_header or "").lower()
 
 
+I18N_SLOT = b"/*TVPULT_I18N*/null"
+
+
 def _page() -> bytes:
-    return resources.files("tvpult").joinpath("static/index.html").read_bytes()
+    """The page with both dictionaries embedded: it works offline and before sign-in (the PIN screen)."""
+    page = resources.files("tvpult").joinpath("static/index.html").read_bytes()
+    # "<" escaped so no text in the dictionaries can close the <script> element.
+    strings = json.dumps(page_strings(), ensure_ascii=False).replace("<", "\\u003c").encode("utf-8")
+    return page.replace(I18N_SLOT, strings, 1)
 
 
 def qr_data_uri(text: str) -> str:
@@ -436,12 +444,12 @@ def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None 
         handler = make_handler(home, {lan.lower()}, presence, role="lan", auth=auth, lan_url=lan_url)
         servers.append(ThreadingHTTPServer((lan, port), handler))
     threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
-    for t in threads:
-        t.start()
+    for thread in threads:  # (not `t`: that is the translation function)
+        thread.start()
     for addr in binds:
         print(f"  http://{addr}:{port}/")
     if lan:
-        print(f"  {lan_url}  — с телефона в домашней сети, PIN: {auth.pin}")
+        print(t("cli.lan_line", url=lan_url, pin=auth.pin))
     # Devices may have moved since last time: look for any that don't answer where we left them.
     threading.Thread(target=lambda: home.status(rediscover="wait"), daemon=True).start()
     if on_ready:

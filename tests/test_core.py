@@ -293,7 +293,7 @@ def test_network_label():
     tv = SamsungTv(TvConfig(id="t", name="T", host="0.0.0.0"), None, {"02:00:00:00:a9:21": "HomeWiFi"})
     assert tv.network_label({"networkType": "wireless", "ssid": "02:00:00:00:A9:21"}) == "Wi-Fi HomeWiFi"
     assert tv.network_label({"networkType": "wireless", "ssid": "aa:bb:cc:dd:ee:ff"}) == "Wi-Fi aa:bb:cc:dd:ee:ff"
-    assert tv.network_label({"networkType": "wired"}) == "Кабель"
+    assert tv.network_label({"networkType": "wired"}) == ""
 
 
 def test_send_text_validates_length():
