@@ -1,0 +1,34 @@
+name: Add an app
+description: "An app on your TV that tvpult doesn't show. (Even better: a pull request — see CONTRIBUTING.md.)"
+title: "Add app: "
+labels: ["type: ✨ feature", "area: samsung", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        2022+ TVs don't list their apps, so tvpult only shows apps from its catalog (`src/tvpult/apps.json`,
+        `tvpult catalog` lists it). Adding one is a small change; the id is what matters.
+  - type: input
+    id: name
+    attributes:
+      label: App name
+      description: As shown on the TV, e.g. "Kinopoisk".
+    validations:
+      required: true
+  - type: input
+    id: id
+    attributes:
+      label: Tizen app id
+      description: |
+        On a 2017–2021 TV: `tvpult discover <tv> --grep <name>` prints it. If you don't know it, leave it empty —
+        maybe someone else does.
+  - type: input
+    id: year
+    attributes:
+      label: TV model year(s) where you saw this id
+      description: e.g. 2019. The first two digits of the platform code in `http://<tv-address>:8001/api/v2/`.
+  - type: input
+    id: regions
+    attributes:
+      label: Where does the service work?
+      description: Countries (e.g. "DE, AT") or "everywhere".

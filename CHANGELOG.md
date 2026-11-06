@@ -5,6 +5,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- CONTRIBUTING.md (running the tests, adding an app, texts in both languages, what a driver for another brand
+  will need, pull request rules) and issue forms: "My TV is not found" (model, year, the TV's `/api/v2/` answer
+  without MACs and ids), "Add an app", bug report; vulnerabilities go to private reporting. `tvpult --version`.
+  SECURITY.md now says what a signed-in phone may change; the TV menu path for removing tvpult is the same
+  everywhere (it differs on 2022+ sets). (#10)
 - The app catalog is a data file, `src/tvpult/apps.json` (alias, names in English/Russian, regions, ids with
   the model years they were confirmed on), checked against its schema when loaded and by a test. A TV tries the
   ids seen on its own model year first. `tvpult catalog` lists it; CONTRIBUTING.md explains how to add an app. (#5)

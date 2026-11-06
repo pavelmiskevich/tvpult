@@ -81,7 +81,7 @@ listed there and can be signed out with one click. Away from home: `--tailnet` w
 - Before any command the device's identity is checked (MAC reported by the TV must match the ARP table).
 - Requests from other websites in your browser are rejected (Host check, custom header, Origin check).
 - Undo everything: **⚙ → Remove** each device (or delete the folder), and remove `tvpult` from the TV's own
-  device list (Settings → General → External Device Manager → Device Connection Manager → Device List).
+  device list (Settings → General (on 2022+ sets: Connection) → External Device Manager → Device Connection Manager → Device List).
 
 Details: [SECURITY.md](SECURITY.md) (what is and isn't protected, how to report a vulnerability) and
 [docs/design.md](docs/design.md).

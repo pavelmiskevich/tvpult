@@ -26,6 +26,15 @@ LOG_MAX_BYTES = 1_000_000
 NO_DEVICES_NEEDED = {"keys", "catalog", "shortcut", "init", "paths", "serve", "app", "find"}
 
 
+def _version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("tvpult")
+    except PackageNotFoundError:  # running from a source tree that was never installed
+        return "unknown"
+
+
 def shortcut_name() -> str:
     """The desktop shortcut's name, in the system language: "TV Remote" / «Пульт ТВ»."""
     return t("shortcut.name")
@@ -248,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--addresses", default=None, help=argparse.SUPPRESS)  # address book path (tests)
     p.add_argument("--no-browser", action="store_true", help=argparse.SUPPRESS)  # app mode without a window (tests)
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--version", action="version", version=f"tvpult {_version()}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help=t("cli.cmd.status"))
