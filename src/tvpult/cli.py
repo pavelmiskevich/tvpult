@@ -23,7 +23,7 @@ from .i18n import t
 DEFAULT_PORT = 8765
 LOG_MAX_BYTES = 1_000_000
 # Commands that work without any configured device.
-NO_DEVICES_NEEDED = {"keys", "shortcut", "init", "paths", "serve", "app", "find"}
+NO_DEVICES_NEEDED = {"keys", "catalog", "shortcut", "init", "paths", "serve", "app", "find"}
 
 
 def shortcut_name() -> str:
@@ -42,6 +42,16 @@ def _print_sightings(tvs: list[dict]) -> None:
         mac = ":".join(tv["mac"][i:i + 2] for i in range(0, 12, 2))
         mark = "" if tv["confirmed"] else "  ⚠ " + tv["note"]
         print(f"{tv['host']:<15} {tv['model'] or '?':<16} {year:<5} {mac}  {tv['name']}  [{who}]{mark}")
+
+
+def _print_catalog() -> None:
+    """`tvpult catalog`: every app tvpult looks for, e.g. `kinopoisk  Кинопоиск  RU  111399000037 (2017, 2022)`."""
+    from . import i18n
+    from .catalog import catalog
+
+    for app in catalog().values():
+        ids = "  ".join(i.id + (f" ({', '.join(map(str, i.seen))})" if i.seen else "") for i in app.ids)
+        print(f"{app.alias:<10} {app.name(i18n.lang()):<14} {','.join(app.regions):<6} {ids}")
 
 
 def log_file() -> Path:
@@ -268,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("value")
     s.add_argument("--bar")
     sub.add_parser("keys", help=t("cli.cmd.keys"))
+    sub.add_parser("catalog", help=t("cli.cmd.catalog"))
     for name in ("serve", "app"):
         s = sub.add_parser(name, help=t(f"cli.cmd.{name}"))
         s.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -297,6 +308,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "keys":
         print(t("cli.aliases"), ", ".join(sorted(KEY_ALIASES)))
         print(t("cli.keys"), ", ".join(sorted(ALLOWED_KEYS)))
+        return 0
+    if a.cmd == "catalog":
+        _print_catalog()
         return 0
     if a.cmd == "shortcut":
         try:
