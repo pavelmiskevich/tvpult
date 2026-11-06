@@ -5,6 +5,9 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- The app catalog is a data file, `src/tvpult/apps.json` (alias, names in English/Russian, regions, ids with
+  the model years they were confirmed on), checked against its schema when loaded and by a test. A TV tries the
+  ids seen on its own model year first. `tvpult catalog` lists it; CONTRIBUTING.md explains how to add an app. (#5)
 - English and Russian everywhere (#6): the page picks the browser's language, with a switch in **⚙ settings**
   (remembered per browser); the command line, its help and the desktop shortcut's name ("TV Remote" /
   «Пульт ТВ») follow the system language — `TVPULT_LANG=en|ru` overrides. Two JSON dictionaries in the package
