@@ -76,6 +76,10 @@ HTML); the rest are for the command line (`t("cli.…", name=…)`). Add every n
 `{placeholders}` — `tests/test_i18n.py` checks that, and that every key the code uses exists. Don't speak Russian?
 Add the English text to both files and say so in the pull request; someone will translate it.
 
+Errors work the same way: raise `DeviceError(code="something", name=…)` (or `ApiError(status, "something")` in
+the server) and add `err.something` to both dictionaries — never a free English sentence. `tests/test_errors.py`
+fails for a code that has no words.
+
 ## Support another TV brand (drivers)
 
 Only Samsung Tizen is supported now. A driver interface — so LG webOS, Android TV and others can be added

@@ -22,6 +22,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .errors import TvpultError
+
 log = logging.getLogger(__name__)
 
 COOKIE = "tvpult_session"
@@ -52,9 +54,9 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
-class SignInError(Exception):
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
+class SignInError(TvpultError):
+    def __init__(self, status: int, code: str):
+        super().__init__(code=code)
         self.status = status
 
 
@@ -101,7 +103,7 @@ class LanAuth:
             recent = [t for t in self._fails.get(address, []) if now - t < LOCK_SECONDS]
             self._fails[address] = recent
             if len(recent) >= PER_ADDRESS_FAILS:
-                raise SignInError(429, "too many wrong PINs — try again in 10 minutes")
+                raise SignInError(429, "pin_locked")
             if not isinstance(pin, str) or not hmac.compare_digest(pin.strip().encode(), self.pin.encode()):
                 recent.append(now)
                 self._total_fails += 1
@@ -109,7 +111,7 @@ class LanAuth:
                     self.pin = new_pin()
                     self._total_fails = 0
                     log.warning("too many wrong PINs in total — a new PIN was made (see the computer)")
-                raise SignInError(401, "wrong PIN")
+                raise SignInError(401, "wrong_pin")
             self._fails.pop(address, None)
             token = secrets.token_hex(32)
             self._sessions.append(Session(secrets.token_hex(4), _hash(token), now, label[:60]))

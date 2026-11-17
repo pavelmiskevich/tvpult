@@ -82,8 +82,8 @@ def _home(sightings, tvs=None):
                 find_tvs_fn=lambda subnets: sightings)
 
 
-def _sighting(host="192.168.1.50", mac=TV_A, year=2022, confirmed=True, note=""):
-    return TvSighting(host, normalize_mac(mac), "QE65", "Samsung", year, confirmed, note)
+def _sighting(host="192.168.1.50", mac=TV_A, year=2022, confirmed=True, note="", note_code=""):
+    return TvSighting(host, normalize_mac(mac), "QE65", "Samsung", year, confirmed, note, note_code)
 
 
 @pytest.fixture
@@ -145,7 +145,7 @@ def test_empty_name_falls_back_to_the_model(paired):
 
 
 def test_pair_refuses_unknown_and_unconfirmed(paired):
-    home = _home([_sighting(confirmed=False, note="the MAC it reports differs")])
+    home = _home([_sighting(confirmed=False, note="the MAC it reports differs", note_code="tv_mac_differs")])
     home.setup_scan()
     with pytest.raises(DeviceError, match="last search"):
         home.setup_pair("c9", "X")

@@ -61,7 +61,14 @@ the display language (`GetUserDefaultUILanguage`, not the regional format), else
 `LANG`; anything that isn't Russian is English. The shortcut gets its name at creation time.
 
 The server's status is language-neutral (`"wired": true` instead of a word for "cable"; power results are
-fixed English phrases the page maps). Error messages from the devices are still English in both languages.
+fixed English phrases the page maps).
+
+Errors carry a code: `DeviceError(code="offline", name=…)`, `ApiError(400, "bad_name")` (`errors.py`). The words
+are in the dictionaries as `err.<code>` — one source for both languages; `str(e)` and the logs are English. The API
+answers `{"error": "<English>", "code": …, "params": {…}}`; the page shows `err.<code>` in its language (the
+server's English text for a code it doesn't know), the command line prints it in its own. Text that comes from a
+library inside an error (`detail`) stays as it is. A test finds every code raised in the sources and checks both
+dictionaries have it. Discovery's reasons for not trusting a TV (`note`) have codes too (`note_code`).
 
 ## Where files live
 

@@ -25,6 +25,7 @@ from . import config as paths
 from . import discovery
 from .catalog import app_catalog, normalize_key
 from .config import Config, SoundbarConfig, TvConfig
+from .errors import TvpultError
 from .wol import send_wol, subnet_broadcast
 
 log = logging.getLogger(__name__)
@@ -44,8 +45,8 @@ def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 
-class DeviceError(RuntimeError):
-    pass
+class DeviceError(TvpultError):
+    """Something went wrong with a device; DeviceError(code="offline", name=…) — see errors.py."""
 
 
 class _Identity:
@@ -180,7 +181,7 @@ class SamsungTv:
         Returns None when the TV doesn't reply in time.
         """
         if not self.online():
-            raise DeviceError(f"{self.cfg.name} is off or unreachable")
+            raise DeviceError(code="offline", name=self.cfg.name)
         result: dict[str, Any] = {}
 
         def worker():
@@ -197,7 +198,7 @@ class SamsungTv:
                 self._ws = None  # abandon the stuck socket; a fresh one is opened next time
                 return None
         if "error" in result:
-            raise DeviceError(f"{self.cfg.name}: {result['error']}")
+            raise DeviceError(code="device_failed", name=self.cfg.name, detail=result["error"])
         return [{"id": str(a.get("appId")), "name": str(a.get("name"))} for a in result.get("apps") or []]
 
     def current_app(self) -> str | None:
@@ -294,13 +295,13 @@ class SamsungTv:
                             self._ws.close()
                     self._ws = None
                     if attempt == 2:
-                        raise DeviceError(f"{self.cfg.name}: {e}") from e
+                        raise DeviceError(code="device_failed", name=self.cfg.name, detail=e) from e
 
     def _require_online(self) -> None:
         if not self.online():
             if self.wrong_device:
-                raise DeviceError(f"{self.cfg.name}: at {self.host} there is another device — try `tvpult find`")
-            raise DeviceError(f"{self.cfg.name} is off or unreachable")
+                raise DeviceError(code="wrong_device", name=self.cfg.name, host=self.host)
+            raise DeviceError(code="offline", name=self.cfg.name)
 
     def pair(self, timeout: float = 45) -> None:
         """Open the remote channel; the TV shows an Allow prompt the first time."""
@@ -313,12 +314,12 @@ class SamsungTv:
         try:
             tv.open()
         except Exception as e:  # declined, timed out, connection dropped — all mean "not paired"
-            raise DeviceError(f"{self.cfg.name}: not allowed on the TV ({e})") from e
+            raise DeviceError(code="not_allowed", name=self.cfg.name, detail=e) from e
         finally:
             with contextlib.suppress(Exception):
                 tv.close()
         if not self.cfg.token_file.exists():
-            raise DeviceError("the TV did not issue a token (prompt declined or timed out)")
+            raise DeviceError(code="no_token")
 
     def send_keys(self, keys: list[str]) -> list[str]:
         norm = [normalize_key(k) for k in keys]
@@ -336,7 +337,7 @@ class SamsungTv:
     def send_text(self, text: str, submit: bool = False) -> int:
         """Type into the text field currently open on the TV (search box, password...)."""
         if not text or len(text) > 256:
-            raise DeviceError("text must be 1-256 characters")
+            raise DeviceError(code="text_length")
         self._require_online()
 
         def go(tv):
@@ -352,10 +353,10 @@ class SamsungTv:
             if app.lower() in (a["alias"].lower(), a["name"].lower()):
                 return a["id"]
         if app in self._catalog:
-            raise DeviceError(f"{app} is not installed on {self.cfg.name}")
+            raise DeviceError(code="app_not_installed", app=app, name=self.cfg.name)
         if app.isdigit() or "." in app:
             return app
-        raise DeviceError(f"unknown app: {app}")
+        raise DeviceError(code="unknown_app", app=app)
 
     def launch(self, app: str) -> str:
         self._require_online()
@@ -382,7 +383,7 @@ class SamsungTv:
             self.send_keys(["KEY_POWER"])  # 2022 sets in network standby
             return "woken from standby"
         if not self.cfg.wake_on_lan or not self.cfg.mac:
-            raise DeviceError(f"{self.cfg.name} cannot be powered on over the network — use the remote")
+            raise DeviceError(code="no_wol", name=self.cfg.name)
         send_wol(self.cfg.mac, self.wol_targets())
         return "wake-on-lan sent"
 
@@ -470,7 +471,7 @@ class CastSoundbar:
                             self._cc.disconnect(timeout=2)
                     self._cc = None
                     if attempt == 2:
-                        raise DeviceError(f"{self.cfg.name}: {e}") from e
+                        raise DeviceError(code="device_failed", name=self.cfg.name, detail=e) from e
 
     def status(self) -> dict[str, Any]:
         out: dict[str, Any] = {"id": self.cfg.id, "kind": "soundbar", "name": self.cfg.name,
@@ -490,7 +491,7 @@ class CastSoundbar:
 
     def _require_online(self) -> None:
         if not self.online():
-            raise DeviceError(f"{self.cfg.name} is off or unreachable")
+            raise DeviceError(code="offline", name=self.cfg.name)
 
     def set_volume(self, level: int) -> int:
         level = max(0, min(100, int(level)))
@@ -528,16 +529,16 @@ class CastSoundbar:
 
 @contextlib.contextmanager
 def _try_lock(lock: threading.Lock, busy: str):
-    """Hold the lock, or refuse right away (DeviceError) if someone else holds it."""
+    """Hold the lock, or refuse right away (DeviceError with the code `busy`) if someone else holds it."""
     if not lock.acquire(blocking=False):
-        raise DeviceError(busy)
+        raise DeviceError(code=busy)
     try:
         yield
     finally:
         lock.release()
 
 
-PAIRING_BUSY = "another TV is being connected right now"
+PAIRING_BUSY = "busy_pairing"  # error code
 
 
 class Home:
@@ -583,13 +584,13 @@ class Home:
         """Pair a candidate from the last scan, then add it to devices.toml (only after the TV said yes)."""
         t = self._candidates.get(cid)
         if t is None:
-            raise DeviceError("this TV is not in the last search — search again")
+            raise DeviceError(code="not_in_search")
         if t["configured"]:
             return {"id": t["configured"], "already": True}
         if not t["confirmed"]:
-            raise DeviceError(t["note"] or "the network did not confirm this TV's MAC")
+            raise DeviceError(code=t.get("note_code") or "not_confirmed")
         if not self._setup_lock.acquire(blocking=False):
-            raise DeviceError("another TV is being connected right now")
+            raise DeviceError(code=PAIRING_BUSY)
         try:
             name = " ".join(name.split())[:40] or t["model"] or "TV"
             tv_id = paths.slugify(name, taken={*self.tvs, *self.bars})
@@ -617,7 +618,7 @@ class Home:
             return self.tv(dev_id)
         if kind == "soundbar":
             return self.bar(dev_id)
-        raise DeviceError(f"unknown device kind: {kind}")
+        raise DeviceError(code="unknown_kind", kind=kind)
 
     def _write_config(self, fn, *args, **kwargs) -> None:
         """Change devices.toml; a config error becomes a DeviceError and the file stays as it was."""
@@ -625,14 +626,14 @@ class Home:
             try:
                 fn(*args, **kwargs)
             except (KeyError, ValueError, OSError) as e:
-                raise DeviceError(f"devices.toml not changed: {e}") from e
+                raise DeviceError(code="config_not_changed", detail=e) from e
 
     def update_device(self, kind: str, dev_id: str, name: str | None = None,
                       wake_on_lan: bool | None = None) -> dict[str, Any]:
         """Rename a device and/or switch a TV's Wake-on-LAN; saved to devices.toml."""
         dev = self._device(kind, dev_id)
         if wake_on_lan and not dev.cfg.mac:
-            raise DeviceError(f"{dev.cfg.name}: no MAC address known, Wake-on-LAN can't work")
+            raise DeviceError(code="wol_no_mac", name=dev.cfg.name)
         self._write_config(paths.update_device, kind, dev_id, name=name, wake_on_lan=wake_on_lan)
         changes: dict[str, Any] = {}
         if name is not None:
@@ -708,7 +709,7 @@ class Home:
         try:
             return self.tvs[tv_id]
         except KeyError:
-            raise DeviceError(f"no TV '{tv_id}' (have: {', '.join(self.tvs)})") from None
+            raise DeviceError(code="no_tv", id=tv_id, have=", ".join(self.tvs)) from None
 
     def bar(self, bar_id: str | None = None) -> CastSoundbar:
         if bar_id is None and len(self.bars) == 1:
@@ -716,7 +717,7 @@ class Home:
         try:
             return self.bars[bar_id or ""]
         except KeyError:
-            raise DeviceError(f"no soundbar '{bar_id}' (have: {', '.join(self.bars)})") from None
+            raise DeviceError(code="no_soundbar", id=bar_id, have=", ".join(self.bars)) from None
 
     # --- discovery --------------------------------------------------------------
     def _wanted(self) -> list[discovery.Wanted]:
@@ -736,7 +737,8 @@ class Home:
         out = []
         for s in self._find_tvs(self.subnets()):
             out.append({"host": s.host, "mac": s.mac, "model": s.model, "name": s.name, "year": s.year,
-                        "confirmed": s.confirmed, "note": s.note, "configured": by_mac.get(s.mac)})
+                        "confirmed": s.confirmed, "note": s.note, "note_code": s.note_code,
+                        "configured": by_mac.get(s.mac)})
         return out
 
     def relocate(self, force: bool = False) -> dict[str, discovery.Found]:

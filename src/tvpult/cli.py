@@ -18,6 +18,7 @@ from . import config as paths
 from .catalog import ALLOWED_KEYS, KEY_ALIASES, UnknownKey
 from .config import init_config, load_config
 from .devices import DeviceError, Home
+from .errors import TvpultError, localized
 from .i18n import t
 
 DEFAULT_PORT = 8765
@@ -49,7 +50,8 @@ def _print_sightings(tvs: list[dict]) -> None:
         year = tv["year"] or "?"
         who = t("cli.configured_as", id=tv["configured"]) if tv["configured"] else t("cli.new")
         mac = ":".join(tv["mac"][i:i + 2] for i in range(0, 12, 2))
-        mark = "" if tv["confirmed"] else "  ⚠ " + tv["note"]
+        note = localized(TvpultError(tv["note"], code=tv.get("note_code") or None))
+        mark = "" if tv["confirmed"] else "  ⚠ " + note
         print(f"{tv['host']:<15} {tv['model'] or '?':<16} {year:<5} {mac}  {tv['name']}  [{who}]{mark}")
 
 
@@ -141,8 +143,8 @@ def _ready(home: Home, dev):
     """Before acting on a device: if it doesn't answer where we left it, search for it once."""
     if not home.ensure(dev):
         if getattr(dev, "wrong_device", False):
-            raise DeviceError(t("cli.err.wrong_device", name=dev.cfg.name, host=dev.host))
-        raise DeviceError(t("cli.err.offline", name=dev.cfg.name))
+            raise DeviceError(code="wrong_device", name=dev.cfg.name, host=dev.host)
+        raise DeviceError(code="offline", name=dev.cfg.name)
     return dev
 
 
@@ -193,7 +195,7 @@ def shortcut_target(executable: str | None = None) -> tuple[str, str]:
         candidate = exe.with_name(name)
         if candidate.is_file():
             return str(candidate), "-m tvpult app"
-    raise DeviceError(t("cli.err.no_pythonw", exe=exe))
+    raise DeviceError(code="no_pythonw", exe=exe)
 
 
 def _make_shortcut(lan: bool = False) -> str:
@@ -219,7 +221,7 @@ def _make_shortcut(lan: bool = False) -> str:
     path = out.stdout.decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
     if out.returncode != 0 or not Path(path[0]).is_file():
         err = out.stderr.decode("utf-8", "replace").strip() or out.stdout.decode("utf-8", "replace").strip()
-        raise DeviceError(t("cli.err.shortcut", error=err or t("cli.err.powershell_silent")))
+        raise DeviceError(code="shortcut", detail=err) if err else DeviceError(code="powershell_silent")
     return path[0]
 
 
@@ -327,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
             print(t("cli.shortcut_made"), _make_shortcut(lan=a.lan))
             return 0
         except DeviceError as e:
-            print(t("cli.error", error=e), file=sys.stderr)
+            print(t("cli.error", error=localized(e)), file=sys.stderr)
             return 1
     if a.cmd == "paths":
         missing = "" if paths.config_file().exists() else t("cli.paths.missing")
@@ -442,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         print(t("cli.unknown_key", key=e), file=sys.stderr)
         return 2
     except (DeviceError, ValueError) as e:
-        print(t("cli.error", error=e), file=sys.stderr)
+        print(t("cli.error", error=localized(e)), file=sys.stderr)
         return 1
     finally:
         home.close()

@@ -5,6 +5,9 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Added
+- Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
+  (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
+  line show it in their language. The setup wizard's reasons for not trusting a TV are translated as well.
 - CONTRIBUTING.md (running the tests, adding an app, texts in both languages, what a driver for another brand
   will need, pull request rules) and issue forms: "My TV is not found" (model, year, the TV's `/api/v2/` answer
   without MACs and ids), "Add an app", bug report; vulnerabilities go to private reporting. `tvpult --version`.

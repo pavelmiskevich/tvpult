@@ -24,6 +24,7 @@ from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey, app_names
 from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
 from .devices import DeviceError, Home
+from .errors import TvpultError
 from .i18n import page_strings, t
 
 log = logging.getLogger(__name__)
@@ -33,10 +34,17 @@ MAX_BODY = 16 * 1024
 _DEV_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
-class ApiError(Exception):
-    def __init__(self, status: int, message: str):
-        super().__init__(message)
+class ApiError(TvpultError):
+    """An HTTP error answer: ApiError(400, "bad_name") — a code from errors.py, with parameters."""
+
+    def __init__(self, status: int, code: str | None = None, message: str | None = None, **params: Any):
+        super().__init__(message, code=code, **params)
         self.status = status
+
+    @classmethod
+    def from_error(cls, status: int, e: TvpultError) -> ApiError:
+        """A device error as an API answer: same code, parameters and English text."""
+        return cls(status, e.code, str(e), **e.params)
 
 
 def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
@@ -46,27 +54,27 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
         return {"devices": home.status(rediscover="background"), "quick": quick,
                 "setup": bool(getattr(home, "setup_needed", False))}
     if method != "POST":
-        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+        raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     if path == "/api/setup/scan":
         return {"tvs": home.setup_scan()}
     if path == "/api/setup/pair":
         cid, name = body.get("cid"), body.get("name", "")
         if not isinstance(cid, str) or not re.fullmatch(r"c\d{1,4}", cid):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "cid required")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_cid")
         if not isinstance(name, str) or len(name) > 40:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "name must be text, up to 40 characters")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_name")
         try:
             return home.setup_pair(cid, name)
         except DeviceError as e:
-            raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
+            raise ApiError.from_error(HTTPStatus.CONFLICT, e) from e
     if path.startswith("/api/settings/"):
         try:
             return _settings(home, path.removeprefix("/api/settings/"), body)
         except DeviceError as e:
-            raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
+            raise ApiError.from_error(HTTPStatus.CONFLICT, e) from e
     m = _ROUTE.match(path)
     if not m:
-        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+        raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     kind, dev_id, action = m.groups()
     try:
         return _act(home, kind, dev_id, action, body)
@@ -75,8 +83,8 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
             try:
                 return _act(home, kind, dev_id, action, body)
             except DeviceError as e:
-                raise ApiError(HTTPStatus.CONFLICT, str(e)) from e
-        raise ApiError(HTTPStatus.CONFLICT, str(first)) from first
+                raise ApiError.from_error(HTTPStatus.CONFLICT, e) from e
+        raise ApiError.from_error(HTTPStatus.CONFLICT, first) from first
 
 
 def _settings(home: Home, action: str, body: dict[str, Any]) -> Any:
@@ -85,29 +93,29 @@ def _settings(home: Home, action: str, body: dict[str, Any]) -> Any:
         apps = body.get("apps")
         if (not isinstance(apps, list) or len(apps) > MAX_QUICK_APPS
                 or not all(isinstance(a, str) and APP_ALIAS.fullmatch(a) for a in apps)):
-            raise ApiError(HTTPStatus.BAD_REQUEST, f"apps: a list of up to {MAX_QUICK_APPS} app names")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_apps", max=MAX_QUICK_APPS)
         return {"quick": home.set_quick_apps(apps)}
     if action == "search":
         found = home.search()
         return {"found": found or {}, "recent": found is None}
     if action not in ("device", "remove", "unpair", "pair"):
-        raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+        raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     kind, dev_id = body.get("kind"), body.get("id")
     if kind not in SECTIONS or not isinstance(dev_id, str) or not _DEV_ID.fullmatch(dev_id):
-        raise ApiError(HTTPStatus.BAD_REQUEST, "kind (tv or soundbar) and id required")
+        raise ApiError(HTTPStatus.BAD_REQUEST, "bad_device_ref")
     if action == "remove":
         return home.remove_device(kind, dev_id)
     if action == "device":
         name, wol = body.get("name"), body.get("wake_on_lan")
         if name is not None and (not isinstance(name, str) or not clean_name(name) or len(name) > 40):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "name must be text, 1-40 characters")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_name")
         if wol is not None and (not isinstance(wol, bool) or kind != "tv"):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "wake_on_lan must be true or false, TVs only")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "bad_wol")
         if name is None and wol is None:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "nothing to change")
+            raise ApiError(HTTPStatus.BAD_REQUEST, "nothing_to_change")
         return home.update_device(kind, dev_id, name=name, wake_on_lan=wol)
     if kind != "tv":
-        raise ApiError(HTTPStatus.BAD_REQUEST, "only TVs are paired")
+        raise ApiError(HTTPStatus.BAD_REQUEST, "only_tvs_pair")
     return home.unpair(dev_id) if action == "unpair" else home.repair(dev_id)
 
 
@@ -136,22 +144,22 @@ def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) 
             if action == "key":
                 keys = body.get("keys") or ([body["key"]] if "key" in body else [])
                 if not keys or not all(isinstance(k, str) for k in keys):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "keys required")
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "keys_required")
                 return {"sent": tv.send_keys(keys)}
             if action == "launch":
                 app = body.get("app")
                 if not isinstance(app, str) or not app:
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "app required")
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "app_required")
                 return {"launched": tv.launch(app)}
             if action == "text":
                 text = body.get("text")
                 if not isinstance(text, str) or not text:
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "text required")
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "text_required")
                 return {"typed": tv.send_text(text, submit=bool(body.get("submit")))}
             if action == "power":
                 on = body.get("on")
                 if not isinstance(on, bool):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "on must be true or false")
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "bad_on")
                 return {"result": tv.power_on() if on else tv.power_off()}
         else:
             bar = home.bar(dev_id)
@@ -160,15 +168,15 @@ def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) 
                     return {"volume": bar.set_volume(body["level"])}
                 if isinstance(body.get("delta"), int):
                     return {"volume": bar.change_volume(body["delta"])}
-                raise ApiError(HTTPStatus.BAD_REQUEST, "level or delta required")
+                raise ApiError(HTTPStatus.BAD_REQUEST, "bad_volume")
             if action == "mute":
                 muted = body.get("muted")
                 if muted is not None and not isinstance(muted, bool):
-                    raise ApiError(HTTPStatus.BAD_REQUEST, "muted must be bool or null")
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "bad_muted")
                 return {"muted": bar.set_muted(muted)}
     except UnknownKey as e:
-        raise ApiError(HTTPStatus.BAD_REQUEST, f"key not allowed: {e}") from e
-    raise ApiError(HTTPStatus.NOT_FOUND, "not found")
+        raise ApiError(HTTPStatus.BAD_REQUEST, "key_not_allowed", key=e) from e
+    raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
 
 
 class Presence:
@@ -299,9 +307,12 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8", headers)
 
+        def _err(self, status: int, code: str) -> None:
+            self._json(status, ApiError(status, code).payload())
+
         def _guard(self) -> bool:
             if not host_allowed(self.headers.get("Host"), allowed_hosts):
-                self._json(HTTPStatus.FORBIDDEN, {"error": "host not allowed"})
+                self._err(HTTPStatus.FORBIDDEN, "host_not_allowed")
                 return False
             return True
 
@@ -311,7 +322,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 return True
             if auth.valid(cookie_token(self.headers.get("Cookie"))):
                 return True
-            self._json(HTTPStatus.UNAUTHORIZED, {"error": "pin_required"})
+            self._err(HTTPStatus.UNAUTHORIZED, "pin_required")
             return False
 
         def _lan_info(self) -> dict[str, Any]:
@@ -329,7 +340,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 return
             if path == "/api/lan":  # the PIN and the sessions: this computer only
                 if role != "local":
-                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    self._err(HTTPStatus.NOT_FOUND, "not_found")
                     return
                 self._json(HTTPStatus.OK, self._lan_info())
                 return
@@ -344,7 +355,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 length = -1
             if length < 0 or length > MAX_BODY:
                 self.close_connection = True
-                self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "too large"})
+                self._err(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too_large")
                 return
             # Read the body before any refusal, so the client gets the answer
             # instead of a reset connection.
@@ -367,30 +378,30 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             if self.headers.get("X-Tvpult") != "1" or not origin_ok(
                 self.headers.get("Origin"), self.headers.get("Host")
             ):
-                self._json(HTTPStatus.FORBIDDEN, {"error": "forbidden"})
+                self._err(HTTPStatus.FORBIDDEN, "forbidden")
                 return
             try:
                 body = json.loads(raw or b"{}")
                 if not isinstance(body, dict):
                     raise ValueError
             except ValueError:
-                self._json(HTTPStatus.BAD_REQUEST, {"error": "bad json"})
+                self._err(HTTPStatus.BAD_REQUEST, "bad_json")
                 return
             if path == "/api/login":
                 if role != "lan":
-                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    self._err(HTTPStatus.NOT_FOUND, "not_found")
                     return
                 try:
                     token = auth.sign_in(self.client_address[0], body.get("pin"),
                                          label=device_label(self.headers.get("User-Agent")))
                 except SignInError as e:
-                    self._json(e.status, {"error": str(e)})
+                    self._json(e.status, e.payload())
                     return
                 self._json(HTTPStatus.OK, {"ok": True}, {"Set-Cookie": set_cookie(token)})
                 return
             if path.startswith("/api/lan/"):  # managing phone access: this computer only
                 if role != "local" or auth is None:
-                    self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                    self._err(HTTPStatus.NOT_FOUND, "not_found")
                     return
                 if path == "/api/lan/revoke" and isinstance(body.get("id"), str):
                     self._json(HTTPStatus.OK, {"revoked": auth.revoke(body["id"])})
@@ -398,13 +409,13 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                     auth.renew_pin()
                     self._json(HTTPStatus.OK, self._lan_info())
                 else:
-                    self._json(HTTPStatus.BAD_REQUEST, {"error": "bad request"})
+                    self._err(HTTPStatus.BAD_REQUEST, "bad_request")
                 return
             if not self._signed_in():
                 return
             if path == "/api/hello":
                 if not presence.valid(body.get("client")):
-                    self._json(HTTPStatus.BAD_REQUEST, {"error": "bad client id"})
+                    self._err(HTTPStatus.BAD_REQUEST, "bad_client")
                     return
                 presence.hello(body["client"])
                 self._json(HTTPStatus.OK, {"hello": True, "auto_exit": presence.idle_exit})
@@ -415,7 +426,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             try:
                 self._json(HTTPStatus.OK, dispatch(home, method, path, body))
             except ApiError as e:
-                self._json(e.status, {"error": str(e)})
+                self._json(e.status, e.payload())
             except Exception as e:  # keep the server alive, report the failure
                 log.exception("unhandled error")
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
