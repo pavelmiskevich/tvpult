@@ -199,7 +199,7 @@
  "page.tv.on_screen": "On screen: {app}",
  "page.tv.standby": "Standby",
  "page.unpair": "Disconnect",
- "page.unpair.hint": "The remote forgot its access key for this TV. To remove tvpult from the TV's own list too: Settings → General → External Device Manager → Device Connection Manager → Device List (menu names vary a little by year).",
+ "page.unpair.hint": "The remote forgot its access key for this TV. To remove tvpult from the TV's own list too: Settings → General (on 2022+ sets: Connection) → External Device Manager → Device Connection Manager → Device List (menu names vary a little by year).",
  "page.vol.short": "Vol",
  "page.wol.label": "Switch on over the network (Wake-on-LAN)",
  "page.wol.need_setting": "Needs the TV setting “Power On with Mobile”",
