@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "apps": {
+    "youtube": {
+      "names": {"en": "YouTube", "ru": "YouTube"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "111299001912", "seen": [2022]}
+      ]
+    },
+    "browser": {
+      "names": {"en": "Browser", "ru": "Браузер"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "org.tizen.browser", "seen": [2017]},
+        {"id": "3201907018784"},
+        {"id": "3202010022079", "seen": [2022]}
+      ]
+    },
+    "netflix": {
+      "names": {"en": "Netflix", "ru": "Netflix"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "3201907018807", "seen": [2022]},
+        {"id": "11101200001"}
+      ]
+    },
+    "prime": {
+      "names": {"en": "Prime Video", "ru": "Prime Video"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "3201910019365", "seen": [2022]},
+        {"id": "3201512006785"}
+      ]
+    },
+    "disney": {
+      "names": {"en": "Disney+", "ru": "Disney+"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "3201901017640"},
+        {"id": "3202009021709"},
+        {"id": "3202204027038"}
+      ]
+    },
+    "spotify": {
+      "names": {"en": "Spotify", "ru": "Spotify"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "3201606009684"}
+      ]
+    },
+    "appletv": {
+      "names": {"en": "Apple TV", "ru": "Apple TV"},
+      "regions": ["*"],
+      "ids": [
+        {"id": "3201807016597", "seen": [2022]}
+      ]
+    },
+    "kinopoisk": {
+      "names": {"en": "Kinopoisk", "ru": "Кинопоиск"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "111399000037", "seen": [2017, 2022]}
+      ]
+    },
+    "premier": {
+      "names": {"en": "PREMIER", "ru": "Премьер"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201806016479", "seen": [2017, 2022]}
+      ]
+    },
+    "okko": {
+      "names": {"en": "Okko", "ru": "Okko"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201506002941", "seen": [2017, 2022]}
+      ]
+    },
+    "ivi": {
+      "names": {"en": "ivi", "ru": "Иви"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "111199000746", "seen": [2017, 2022]}
+      ]
+    },
+    "wink": {
+      "names": {"en": "Wink", "ru": "Wink"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201710014965", "seen": [2017, 2022]}
+      ]
+    },
+    "start": {
+      "names": {"en": "START", "ru": "START"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201611011182", "seen": [2017, 2022]}
+      ]
+    },
+    "kion": {
+      "names": {"en": "KION", "ru": "КИОН"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201908018954", "seen": [2017, 2022]}
+      ]
+    },
+    "rutube": {
+      "names": {"en": "RUTUBE", "ru": "RUTUBE"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3201508004641", "seen": [2017, 2022]}
+      ]
+    },
+    "vkvideo": {
+      "names": {"en": "VK Video", "ru": "VK Видео"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "3202112026024", "seen": [2017, 2022]}
+      ]
+    },
+    "moretv": {
+      "names": {"en": "more.tv", "ru": "more.tv"},
+      "regions": ["RU"],
+      "ids": [
+        {"id": "111299002103", "seen": [2017, 2022]}
+      ]
+    }
+  }
+}

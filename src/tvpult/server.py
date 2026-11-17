@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
-from .catalog import UnknownKey
+from .catalog import UnknownKey, app_names
 from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
 from .devices import DeviceError, Home
 from .i18n import page_strings, t
@@ -248,14 +248,18 @@ def origin_ok(origin: str | None, host_header: str | None) -> bool:
 
 
 I18N_SLOT = b"/*TVPULT_I18N*/null"
+APPS_SLOT = b"/*TVPULT_APPS*/null"
+
+
+def _embed(value: Any) -> bytes:
+    # "<" escaped so no text in the data can close the <script> element.
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c").encode("utf-8")
 
 
 def _page() -> bytes:
-    """The page with both dictionaries embedded: it works offline and before sign-in (the PIN screen)."""
+    """The page with both dictionaries and the app names embedded: works offline and before sign-in (PIN)."""
     page = resources.files("tvpult").joinpath("static/index.html").read_bytes()
-    # "<" escaped so no text in the dictionaries can close the <script> element.
-    strings = json.dumps(page_strings(), ensure_ascii=False).replace("<", "\\u003c").encode("utf-8")
-    return page.replace(I18N_SLOT, strings, 1)
+    return page.replace(I18N_SLOT, _embed(page_strings()), 1).replace(APPS_SLOT, _embed(app_names()), 1)
 
 
 def qr_data_uri(text: str) -> str:

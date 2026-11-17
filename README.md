@@ -14,7 +14,8 @@ window and it stops.
 ## What it does
 
 - **Remote keys with no lag** (~10 ms from click to TV), D-pad, volume, channels, playback.
-- **Quick launch** of apps — YouTube, Netflix, the browser, and more; regional apps included.
+- **Quick launch** of apps — YouTube, Netflix, the browser, and more; regional apps included. Missing one? Adding it is
+  a one-entry change to the catalog — see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **What's on screen** and which Wi-Fi access point the TV uses.
 - **Type text** into the field open on the TV (search, passwords) from your phone or laptop.
 - **Power on** over the network (Wake-on-LAN, where the TV supports it) and off.
@@ -87,9 +88,9 @@ Details: [SECURITY.md](SECURITY.md) (what is and isn't protected, how to report 
 
 ## Roadmap
 
-Done: setup wizard, settings page, finding every Samsung TV, phone access with a PIN, CI. Next:
+Done: setup wizard, settings page, English and Russian UI, app catalog, finding every Samsung TV, phone access with a PIN, CI. Next:
 
-1. App catalog with regions; English and Russian UI.
+1. Translated device error messages.
 2. PyPI package (`uv tool install tvpult`), first release.
 3. Windows installer with a desktop shortcut and a tray icon.
 4. Drivers for other brands.

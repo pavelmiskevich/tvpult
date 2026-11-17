@@ -42,11 +42,7 @@ def test_every_key_the_page_uses_exists():
     used |= set(re.findall(r'\bt\("([a-z_.]*[a-z_])"', PAGE)) - {"key"}  # "key": the example in a comment
     used |= set(re.findall(r'"(power\.[a-z_]+)"', PAGE))
     assert used and used <= keys, used - keys
-    # built at run time: t("kind." + d.kind), t("app." + alias) for the catalog's aliases
-    assert {"kind.tv", "kind.soundbar"} <= keys
-    from tvpult.catalog import KNOWN_APPS
-
-    assert {f"app.{alias}" for alias in KNOWN_APPS} - keys <= {"app.disney", "app.spotify", "app.appletv"}
+    assert {"kind.tv", "kind.soundbar"} <= keys  # built at run time: t("kind." + d.kind)
     # say("cls", "key"): messages kept per device are stored as keys
     said = set(re.findall(r'say\("\w+", "([a-z_.]+)"', PAGE))
     assert said and said <= keys, said - keys

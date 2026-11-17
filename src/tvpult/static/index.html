@@ -342,9 +342,9 @@ $("setLang").onchange = () => {
   LANG = pickLang(); applyLang();
   state.settingsDirty = true; render(); loadLan();
 };
-const APP_KEYS = new Set(I18N ? Object.keys(I18N.en).filter((k) => k.startsWith("app.")).map((k) => k.slice(4)) : []);
-// Known services get a fixed name per language; anything else: the name the TV reports.
-const appName = (alias, fallback) => (APP_KEYS.has(alias) ? t("app." + alias) : fallback || alias);
+const APPS = /*TVPULT_APPS*/null;  // the catalog's app names: alias -> {en, ru} (apps.json)
+// Apps from the catalog get its name in the page's language; anything else: the name the TV reports.
+const appName = (alias, fallback) => (APPS && APPS[alias] ? APPS[alias][LANG] || APPS[alias].en : fallback || alias);
 const POWER = { "already on": "power.already_on", "woken from standby": "power.woken",
   "wake-on-lan sent": "power.wol_sent", "already off": "power.already_off", "turned off": "power.turned_off" };
 

@@ -13,7 +13,7 @@ One Python process: a command line (`tvpult …`) and a small HTTP server with o
 | `server.py` | the page + JSON API, request guards, presence of open pages |
 | `devices.py` | Samsung TV (REST `:8001`, WebSocket `:8002`), Cast soundbar (`:8009`), identity checks, moving devices |
 | `discovery.py` | which networks to scan, port scan, identification by MAC/UUID, ARP, address book |
-| `catalog.py` | allowed keys, app catalog |
+| `catalog.py` | allowed keys, the app catalog (`apps.json`, checked against its schema at load) |
 | `wol.py` | Wake-on-LAN |
 | `icon.py` | the shortcut icon, drawn in code |
 
@@ -83,6 +83,12 @@ same for a source checkout and for `uv tool install`.
   2017-era sets do answer the request — `tvpult discover <tv>` lists every app with its id.
 - **2017-era REST can't see built-in `org.tizen.*` apps** (e.g. the browser) but can launch them: `assume_apps`.
 - **App ids differ between model years** — the catalog keeps several per app; the first one the TV knows wins.
+  `apps.json` records the model years each id was confirmed on (`seen`); a TV tries the ids seen on its own
+  year first (the year comes from the platform code it reports, `22_…` → 2022), then the rest in file order.
+  The user's own ids from `devices.toml` `[apps]` always go first. App names (en/ru) come from the catalog too:
+  the server embeds them into the page like the dictionaries. `regions` (`*` or country codes) say where a
+  service works — for people and for `tvpult catalog`; probing still tries every app, the list is short.
+  How to add an app: CONTRIBUTING.md.
 - **Wake-on-LAN** works on sets with "Power On with Mobile"; some older sets turn Wi-Fi off entirely when off.
 - **"Allow?" prompts**: the TV may ask on *every new connection* if its "Access Notification" setting is
   "Always". tvpult keeps one connection open in the server and one-shot commands don't open one at all.
