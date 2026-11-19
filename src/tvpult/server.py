@@ -76,6 +76,8 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     if not m:
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     kind, dev_id, action = m.groups()
+    if (forget := getattr(home, "forget_status", None)) is not None:
+        forget(dev_id)  # the page asks for the status right after an action: show its effect, not a snapshot
     try:
         return _act(home, kind, dev_id, action, body)
     except DeviceError as first:

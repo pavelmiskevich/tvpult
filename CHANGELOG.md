@@ -4,6 +4,13 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- Far fewer requests to the TVs while the remote is open (#33): one status per device every 2.5 s at most,
+  shared by every open page (callers arriving meanwhile wait for the same answer, so a slow TV can't make
+  requests pile up); the app on screen is asked about the last one seen first, the rest every 15 s at once;
+  the app list is refreshed in the background; the ARP check runs once a minute; the page waits for one poll
+  before sending the next.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
