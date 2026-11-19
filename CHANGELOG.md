@@ -4,6 +4,12 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- A TV that is simply off no longer makes tvpult scan the networks every minute while the page is open (#34):
+  the background search backs off per device (1 → 2 → 5 → 15 minutes), starts over when the device answers, a
+  page opens, a button is pressed for it or the laptop moved to another network, and skips a TV switched off
+  from the remote.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command

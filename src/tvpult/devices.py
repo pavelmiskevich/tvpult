@@ -34,6 +34,9 @@ REMOTE_NAME = "tvpult"
 APP_CACHE_SECONDS = 600
 IDENTITY_CACHE_SECONDS = 60
 RESCAN_SECONDS = 60
+# While a device stays missing, the background search backs off: a TV that is simply off is the normal state
+# for most of the day, and a scan of the networks is thousands of connection attempts.
+SEARCH_BACKOFF = (60, 120, 300, 900)
 SEARCH_SECONDS = 10  # a search asked for by hand (settings page)
 
 
@@ -91,6 +94,7 @@ class SamsungTv:
         self._apps_at = 0.0
         self._identity = _Identity()
         self._arp_fn = discovery.read_arp
+        self.switched_off = False  # turned off from the remote: missing on purpose, not searched for
 
     # --- address ----------------------------------------------------------------
     def set_host(self, host: str) -> None:
@@ -385,12 +389,14 @@ class SamsungTv:
         if not self.cfg.wake_on_lan or not self.cfg.mac:
             raise DeviceError(code="no_wol", name=self.cfg.name)
         send_wol(self.cfg.mac, self.wol_targets())
+        self.switched_off = False
         return "wake-on-lan sent"
 
     def power_off(self) -> str:
         if not self.online() or self.info().get("PowerState", "on") != "on":
             return "already off"
         self.send_keys(["KEY_POWER"])
+        self.switched_off = True
         return "turned off"
 
     def close(self) -> None:
@@ -557,6 +563,10 @@ class Home:
         self._adapters = adapters_fn or discovery.adapter_addresses
         self._find_tvs = find_tvs_fn or discovery.find_tvs
         self._relocate_lock = threading.Lock()
+        self._wall = time.time
+        self._misses: dict[str, int] = {}  # device id -> background searches in a row that didn't find it
+        self._next_search: dict[str, float] = {}  # device id -> not searched for in the background before
+        self._searched_from: str | None = None  # this computer's address at the last search
         self._keep_alive = keep_alive
         self._candidates: dict[str, dict[str, Any]] = {}
         self._setup_lock = threading.Lock()  # one pairing at a time (wizard and re-pairing)
@@ -701,8 +711,9 @@ class Home:
 
         At most once per SEARCH_SECONDS: None means "searched a moment ago, not again yet".
         """
-        if time.time() - self.book.scanned_at < SEARCH_SECONDS:
+        if self._wall() - self.book.scanned_at < SEARCH_SECONDS:
             return None
+        self.search_soon()
         return {dev_id: f.host for dev_id, f in self.relocate(force=True).items()}
 
     def tv(self, tv_id: str) -> SamsungTv:
@@ -750,8 +761,9 @@ class Home:
         if not self._relocate_lock.acquire(blocking=False):
             return {}
         try:
-            if not force and time.time() - self.book.scanned_at < RESCAN_SECONDS:
+            if not force and self._wall() - self.book.scanned_at < RESCAN_SECONDS:
                 return {}
+            self._searched_from = self._local_ip()
             hints = {d.cfg.id: d.host for d in self.devices()}
             found = self._locate(self._wanted(), self.subnets(), hints=hints)
             by_id = {d.cfg.id: d for d in self.devices()}
@@ -763,7 +775,7 @@ class Home:
                     log.warning("%s moved: %s -> %s (by %s)", dev_id, dev.host, where.host, where.how)
                     dev.set_host(where.host)
                 self.book.hosts[dev_id] = where.host
-            self.book.mark_scanned()
+            self.book.scanned_at = self._wall()
             try:
                 self.book.save()
             except OSError as e:
@@ -772,8 +784,39 @@ class Home:
         finally:
             self._relocate_lock.release()
 
-    def relocate_in_background(self) -> None:
-        threading.Thread(target=self.relocate, daemon=True).start()
+    def relocate_in_background(self, missing: list[str] | None = None) -> None:
+        threading.Thread(target=self._search_for, args=(missing or [],), daemon=True).start()
+
+    def _search_for(self, missing: list[str]) -> None:
+        """A background search for missing devices; those it doesn't find are looked for less often."""
+        before = self.book.scanned_at
+        found = self.relocate()
+        if self.book.scanned_at == before:  # it didn't run (another search, or one a moment ago)
+            return
+        now = self._wall()
+        for dev_id in missing:
+            if dev_id in found:
+                self._misses.pop(dev_id, None)
+                self._next_search.pop(dev_id, None)
+            else:
+                misses = self._misses[dev_id] = self._misses.get(dev_id, 0) + 1
+                self._next_search[dev_id] = now + SEARCH_BACKOFF[min(misses, len(SEARCH_BACKOFF)) - 1]
+
+    def search_soon(self, dev_id: str | None = None) -> None:
+        """Someone wants the device (a page opened, a button, "search again"): no backing off for it now."""
+        for table in (self._misses, self._next_search):
+            if dev_id is None:
+                table.clear()
+            else:
+                table.pop(dev_id, None)
+
+    def _search_due(self, missing: list[str]) -> bool:
+        """Should the background search run for these missing devices now?"""
+        if self._searched_from is not None and self._local_ip() != self._searched_from:
+            self.search_soon()  # this computer moved to another network: everything may be elsewhere
+            return True
+        now = self._wall()
+        return any(now >= self._next_search.get(dev_id, 0.0) for dev_id in missing)
 
     def ensure(self, dev: SamsungTv | CastSoundbar) -> bool:
         """Make sure dev is reachable; if not, search once. True if reachable now."""
@@ -788,9 +831,16 @@ class Home:
         devs = self.devices()
         with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
             result = list(ex.map(lambda d: d.status(), devs))
-        missing = any(not r.get("online") for r in result)
+        for r in result:
+            if r.get("online"):  # here again: start from the first step next time it goes missing
+                self.search_soon(r["id"])
+                if r["id"] in self.tvs:
+                    self.tvs[r["id"]].switched_off = False
+        missing = [d.cfg.id for d, r in zip(devs, result, strict=True)
+                   if not r.get("online") and not getattr(d, "switched_off", False)]
         if missing and rediscover == "background":
-            self.relocate_in_background()
+            if self._search_due(missing):
+                self.relocate_in_background(missing)
         elif missing and rediscover == "wait" and self.relocate():
             with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
                 result = list(ex.map(lambda d: d.status(), devs))

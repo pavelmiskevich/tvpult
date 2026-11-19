@@ -76,6 +76,8 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     if not m:
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     kind, dev_id, action = m.groups()
+    if (soon := getattr(home, "search_soon", None)) is not None:
+        soon(dev_id)  # someone wants this device: if it's missing, no backing off
     try:
         return _act(home, kind, dev_id, action, body)
     except DeviceError as first:
@@ -204,13 +206,15 @@ class Presence:
     def valid(self, client: Any) -> bool:
         return isinstance(client, str) and bool(self._ID.match(client))
 
-    def hello(self, client: str) -> None:
+    def hello(self, client: str) -> bool:
+        """True for a page that just opened."""
         with self._lock:
             new = client not in self._clients
             self._clients[client] = self._clock()
             self._empty_since = None
             if new:
                 log.info("remote page opened (%d open)", len(self._clients))
+            return new
 
     def bye(self, client: str) -> bool:
         with self._lock:
@@ -417,7 +421,8 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 if not presence.valid(body.get("client")):
                     self._err(HTTPStatus.BAD_REQUEST, "bad_client")
                     return
-                presence.hello(body["client"])
+                if presence.hello(body["client"]) and hasattr(home, "search_soon"):
+                    home.search_soon()  # a page just opened: look for missing devices without waiting
                 self._json(HTTPStatus.OK, {"hello": True, "auto_exit": presence.idle_exit})
                 return
             self._handle("POST", path, body)

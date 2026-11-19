@@ -113,7 +113,12 @@ If a device doesn't answer at its address, or something else answers there, tvpu
   scanned; never public, loopback, link-local or CGNAT (Tailscale) ranges;
 - ports 8001 and 8009, 0.5 s timeout, ~2 s for a /24; the last known address is retried with 1.5 s in parallel
   (a Wi-Fi device idle for a while answers its first connection slowly);
-- at most once a minute (shared between processes through the address book).
+- at most once a minute (shared between processes through the address book);
+- while the page is open and a device stays missing, the background search backs off for it: 1 → 2 → 5 → 15
+  minutes (a TV that is off is the normal state, and a scan is thousands of connection attempts). It starts
+  over when the device answers, when a page opens, on a button for that device or "search again", and at
+  once when the laptop's own address changed. A TV switched off from the remote isn't searched for at all
+  until it shows up again.
 
 SSDP/mDNS discovery was tried first; multicast replies didn't reach the test machine (firewall), while a
 /24 port scan works everywhere.
