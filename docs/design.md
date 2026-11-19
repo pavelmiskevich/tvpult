@@ -158,8 +158,10 @@ after 3 min (browsers slow hidden-tab timers to ~1/min). Nobody opened the page 
 The shortcut runs `pythonw -m tvpult app` (no console window). Console programs started from it — `arp`,
 `tailscale`, PowerShell — go through `tools.run_tool` with `CREATE_NO_WINDOW`: otherwise Windows gives each
 its own console window, which flashed once a minute while the remote was open (checked: a console child of
-`pythonw` gets a visible console window without the flag, none with it). `WScript.Shell` saves shortcuts through the ANSI code page, which
-may lack the characters of the shortcut's name, so it is saved under an ASCII name and renamed in PowerShell.
+`pythonw` gets a visible console window without the flag, none with it).
+
+`WScript.Shell` saves shortcuts through the ANSI code page, which may lack the characters of the shortcut's
+name, so it is saved under an ASCII name and renamed in PowerShell.
 
 ## Tests
 
