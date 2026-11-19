@@ -4,6 +4,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- No console window flashes while the remote runs from the desktop shortcut (#36): `arp`, `tailscale` and
+  PowerShell are started with `CREATE_NO_WINDOW` (`tools.run_tool`). Started from `pythonw`, a console program
+  otherwise gets a visible console window of its own — once a minute per TV for the ARP check.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command

@@ -155,7 +155,10 @@ changes in samsungtvws and is not done yet.
 after 3 min (browsers slow hidden-tab timers to ~1/min). Nobody opened the page in 2 min → stop.
 `bye` can't carry the custom header, so it is accepted only for a random 128-bit client id that said hello.
 
-The shortcut runs `uvw` (no console window). `WScript.Shell` saves shortcuts through the ANSI code page, which
+The shortcut runs `pythonw -m tvpult app` (no console window). Console programs started from it — `arp`,
+`tailscale`, PowerShell — go through `tools.run_tool` with `CREATE_NO_WINDOW`: otherwise Windows gives each
+its own console window, which flashed once a minute while the remote was open (checked: a console child of
+`pythonw` gets a visible console window without the flag, none with it). `WScript.Shell` saves shortcuts through the ANSI code page, which
 may lack the characters of the shortcut's name, so it is saved under an ASCII name and renamed in PowerShell.
 
 ## Tests

@@ -28,6 +28,7 @@ from typing import Any
 import requests
 
 from .errors import TvpultError
+from .tools import run_tool
 
 log = logging.getLogger(__name__)
 
@@ -263,7 +264,7 @@ def parse_arp(text: str) -> dict[str, str]:
 
 def read_arp() -> dict[str, str]:
     try:
-        out = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10)
+        out = run_tool(["arp", "-a"], capture_output=True, text=True, timeout=10)
         return parse_arp(out.stdout)
     except (OSError, subprocess.SubprocessError):
         return {}
