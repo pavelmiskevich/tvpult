@@ -114,6 +114,7 @@
  "err.tv_cabled": "connected by cable: the network shows its Ethernet MAC — add it as lan_mac to confirm",
  "err.tv_mac_differs": "the MAC it reports differs from the one the network sees — not trusted",
  "err.tv_no_arp": "the network didn't confirm its MAC (no ARP entry)",
+ "err.tv_arp_unavailable": "this computer can't read its ARP table (no /proc/net/arp, ip or arp), so no TV can be confirmed",
  "err.unknown_app": "unknown app: {app}",
  "err.unknown_kind": "unknown device kind: {kind}",
  "err.wol_no_mac": "{name}: no MAC address known, Wake-on-LAN can't work",

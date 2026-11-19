@@ -9,8 +9,19 @@ import pytest
 from tvpult import discovery
 from tvpult.config import Config, SoundbarConfig, TvConfig
 from tvpult.devices import CastSoundbar, DeviceError, Home, SamsungTv
-from tvpult.discovery import AddressBook, Found, Wanted, candidate_subnets, locate, normalize_mac, parse_arp
+from tvpult.discovery import (
+    AddressBook,
+    Found,
+    Wanted,
+    candidate_subnets,
+    find_tvs,
+    locate,
+    normalize_mac,
+    parse_arp,
+)
 from tvpult.server import ApiError, Presence, dispatch
+
+real_read_arp = discovery.read_arp  # taken before conftest replaces the module's one
 
 TV_A_MAC = "02:00:00:00:55:01"
 TV_B_MAC = "02:00:00:00:32:01"
@@ -96,15 +107,96 @@ router.lan (192.168.2.1) at 02:00:00:00:a9:20 [ether] on wlan0
 """
 
 
+MACOS_ARP = """
+? (192.168.1.1) at 8c:79:f5:a:1b:2c on en0 ifscope [ethernet]
+? (192.168.1.30) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]
+? (192.168.1.40) at 0:1c:42:0:0:8 on en0 ifscope [ethernet]
+? (192.168.1.41) at (incomplete) on en0 ifscope [ethernet]
+? (192.168.1.255) at ff:ff:ff:ff:ff:ff on en0 ifscope [ethernet]
+? (224.0.0.251) at 1:0:5e:0:0:fb on en0 ifscope permanent [ethernet]
+"""
+IP_NEIGH = """
+192.168.2.1 dev wlan0 lladdr 02:00:00:00:a9:20 REACHABLE
+192.168.2.60 dev wlan0 lladdr 02:00:00:00:ba:01 STALE
+192.168.2.77 dev wlan0 FAILED
+fe80::1 dev wlan0 lladdr 02:00:00:00:a9:20 router STALE
+"""
+PROC_NET_ARP = """IP address       HW type     Flags       HW address            Mask     Device
+192.168.2.1      0x1         0x2         02:00:00:00:a9:20     *        wlan0
+192.168.2.77     0x1         0x0         00:00:00:00:00:00     *        wlan0
+192.168.2.60     0x1         0x2         02:00:00:00:ba:01     *        wlan0
+"""
+
+
 def test_parse_arp_windows():
     t = parse_arp(WINDOWS_ARP)
-    assert t["02000000ba01"] == "192.168.1.60"
-    assert "ffffffffffff" not in t and "01005e000016" not in t
+    assert t["192.168.1.60"] == "02000000ba01"
+    assert "ffffffffffff" not in t.values() and "01005e000016" not in t.values()
 
 
 def test_parse_arp_unix():
     t = parse_arp(LINUX_ARP)
-    assert t == {"02000000ba01": "192.168.2.60", "02000000a920": "192.168.2.1"}
+    assert t == {"192.168.2.60": "02000000ba01", "192.168.2.1": "02000000a920"}
+
+
+def test_parse_arp_macos_short_octets():
+    # #28: macOS drops leading zeros; one TV in three has such an octet
+    t = parse_arp(MACOS_ARP)
+    assert t == {"192.168.1.1": "8c79f50a1b2c", "192.168.1.30": "aabbccddeeff", "192.168.1.40": "001c42000008"}
+
+
+def test_parse_ip_neigh_and_proc_net_arp():
+    want = {"192.168.2.60": "02000000ba01", "192.168.2.1": "02000000a920"}
+    assert parse_arp(IP_NEIGH) == want  # the IPv6 line and the FAILED one are skipped
+    assert parse_arp(PROC_NET_ARP) == want  # an incomplete entry has an all-zero MAC
+
+
+def test_normalize_mac_pads_short_octets():
+    assert normalize_mac("8c:79:f5:a:1b:2c") == normalize_mac("8C-79-F5-0A-1B-2C") == "8c79f50a1b2c"
+    assert normalize_mac("8c:79:f5:a:1b") == "" and normalize_mac("8c:79:f5:abc:1b:2c") == ""
+
+
+def test_one_mac_at_two_addresses_keeps_both():
+    # #29: a device that moved keeps its old entry for a while; Windows lists the lower address first
+    t = parse_arp("  192.168.1.20   02-00-00-00-55-01   dynamic\n  192.168.1.77   02-00-00-00-55-01   dynamic")
+    assert t == {"192.168.1.20": "020000005501", "192.168.1.77": "020000005501"}
+
+
+# --- reading the table on this system ------------------------------------------------------------
+def _sources(monkeypatch, *outputs):
+    def reader(out):
+        def read():
+            if isinstance(out, Exception):
+                raise out
+            return out
+        return read
+    monkeypatch.setattr(discovery, "_arp_sources", lambda: [(f"src{i}", reader(o)) for i, o in enumerate(outputs)])
+
+
+def test_read_arp_takes_the_first_source_that_works(monkeypatch):
+    _sources(monkeypatch, FileNotFoundError("/proc/net/arp"), OSError("ip exited with 1"), LINUX_ARP)
+    t = real_read_arp()
+    assert t.available and t["192.168.2.60"] == "02000000ba01"
+
+
+def test_read_arp_says_when_nothing_works(monkeypatch, caplog):
+    # #28: a Linux machine without net-tools used to look like "no ARP entry" for every TV
+    monkeypatch.setattr(discovery, "_arp_warned", False)
+    _sources(monkeypatch, FileNotFoundError("x"), FileNotFoundError("ip"), FileNotFoundError("arp"))
+    t = real_read_arp()
+    assert t == {} and t.available is False
+    assert "can't read the ARP table" in caplog.text
+    found = find_tvs([N("192.168.1.0/24")], scan_fn=lambda s, p: [("192.168.1.50", 8001)],
+                     identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC), "model": "", "name": "", "year": None},
+                     arp_fn=lambda: t)
+    assert not found[0].confirmed and found[0].note_code == "tv_arp_unavailable"
+
+
+def test_arp_sources_per_system(monkeypatch):
+    monkeypatch.setattr(discovery.sys, "platform", "win32")
+    assert [n for n, _ in discovery._arp_sources()] == ["arp -a"]
+    monkeypatch.setattr(discovery.sys, "platform", "linux")
+    assert [n for n, _ in discovery._arp_sources()] == ["/proc/net/arp", "ip neigh", "arp -an"]
 
 
 # --- matching ------------------------------------------------------------------------------------
@@ -113,9 +205,9 @@ WANTED = [Wanted("tv_a", "tv", mac=TV_A_MAC), Wanted("tv_b", "tv", mac=TV_B_MAC)
 
 
 def _honest_arp(tvs, casts):
-    """An ARP table that agrees with what the devices say about themselves (mac -> ip)."""
-    arp = {normalize_mac(mac): host for host, mac in tvs.items()}
-    arp.update({normalize_mac(BAR_MAC): host for host, u in casts.items() if u == BAR_UUID})
+    """An ARP table that agrees with what the devices say about themselves (ip -> mac)."""
+    arp = {host: normalize_mac(mac) for host, mac in tvs.items()}
+    arp.update({host: normalize_mac(BAR_MAC) for host, u in casts.items() if u == BAR_UUID})
     return arp
 
 
@@ -148,7 +240,7 @@ def test_locate_cast_by_uuid():
 
 
 def test_locate_cast_falls_back_to_arp_only_for_a_cast_host():
-    arp = {normalize_mac(BAR_MAC): "192.168.2.60"}
+    arp = {"192.168.2.60": normalize_mac(BAR_MAC)}
     # uuid endpoint silent, but ARP says our MAC is there and 8009 is open there -> accept
     assert _locate([("192.168.2.60", 8009)], {}, {}, arp) == {"bar": Found("192.168.2.60", "arp")}
     # ARP points at a host without Cast -> reject
@@ -184,7 +276,7 @@ def test_locate_slow_retry_runs_alongside_scan_without_duplicates():
                    scan_fn=lambda s, p: [("192.168.2.51", 8001)],
                    slow_connect=lambda h, p: True,  # the slow retry also sees it
                    identify_tv_fn=ident, identify_cast_fn=lambda h: None,
-                   arp_fn=lambda: {normalize_mac(TV_A_MAC): "192.168.2.51"})
+                   arp_fn=lambda: {"192.168.2.51": normalize_mac(TV_A_MAC)})
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
     assert identified == ["192.168.2.51"]  # asked once, not twice
 
@@ -226,7 +318,7 @@ def test_address_book_missing_file(tmp_path):
 # --- identity checks on devices ------------------------------------------------------------------
 def _tv(mac=TV_A_MAC, host="192.168.1.50", arp_mac=TV_A_MAC, lan_mac=""):
     tv = SamsungTv(TvConfig(id="tv_a", name="Living room", host=host, mac=mac, lan_mac=lan_mac))
-    tv._arp_fn = lambda: {normalize_mac(arp_mac): host} if arp_mac else {}
+    tv._arp_fn = lambda: {host: normalize_mac(arp_mac)} if arp_mac else {}
     return tv
 
 
@@ -536,7 +628,7 @@ IMPOSTOR_MAC = "de:ad:be:ef:00:01"
 def test_locate_rejects_impostor_claiming_tv_mac():
     # a compromised plug at .66 answers the TV API with the living-room TV's Wi-Fi MAC; ARP knows its real MAC
     found = _locate([("192.168.2.66", 8001)], {"192.168.2.66": TV_A_MAC}, {},
-                    arp={normalize_mac(IMPOSTOR_MAC): "192.168.2.66"})
+                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)})
     assert found == {}
 
 
@@ -548,14 +640,26 @@ def test_locate_rejects_tv_claim_without_arp_entry():
 def test_locate_picks_real_tv_over_impostor():
     found = _locate([("192.168.2.66", 8001), ("192.168.2.51", 8001)],
                     {"192.168.2.66": TV_A_MAC, "192.168.2.51": TV_A_MAC}, {},
-                    arp={normalize_mac(IMPOSTOR_MAC): "192.168.2.66", normalize_mac(TV_A_MAC): "192.168.2.51"})
+                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC), "192.168.2.51": normalize_mac(TV_A_MAC)})
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
 
 
 def test_locate_rejects_impostor_claiming_cast_uuid():
     found = _locate([("192.168.2.66", 8009)], {}, {"192.168.2.66": BAR_UUID},
-                    arp={normalize_mac(IMPOSTOR_MAC): "192.168.2.66"})
+                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)})
     assert found == {}
+
+
+def test_locate_finds_a_tv_that_moved_while_the_old_entry_is_still_there():
+    # #29: the ARP table still holds the old address (.20) as well as the new one (.77)
+    arp = {"192.168.2.20": normalize_mac(TV_A_MAC), "192.168.2.77": normalize_mac(TV_A_MAC)}
+    found = _locate([("192.168.2.77", 8001)], {"192.168.2.77": TV_A_MAC}, {}, arp=arp)
+    assert found == {"tv_a": Found("192.168.2.77", "mac")}
+
+
+def test_cast_fallback_checks_every_address_of_its_mac():
+    arp = {"192.168.2.20": normalize_mac(BAR_MAC), "192.168.2.60": normalize_mac(BAR_MAC)}
+    assert _locate([("192.168.2.60", 8009)], {}, {}, arp) == {"bar": Found("192.168.2.60", "arp")}
 
 
 def test_locate_accepts_cabled_tv_by_lan_mac():
@@ -565,7 +669,7 @@ def test_locate_accepts_cabled_tv_by_lan_mac():
                    slow_connect=lambda h, p: False,
                    identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC)},  # still reports Wi-Fi MAC
                    identify_cast_fn=lambda h: None,
-                   arp_fn=lambda: {normalize_mac(lan): "192.168.2.51"})
+                   arp_fn=lambda: {"192.168.2.51": normalize_mac(lan)})
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
 
 
@@ -623,15 +727,15 @@ def test_bar_with_mac_requires_arp(monkeypatch):
     bar = CastSoundbar(SoundbarConfig(id="bar", name="JBL", host="192.168.1.60", uuid=BAR_UUID, mac=BAR_MAC))
     monkeypatch.setattr("tvpult.devices._port_open", lambda h, p, timeout=1.0: True)
     monkeypatch.setattr(discovery, "identify_cast", lambda h, http=None: discovery.normalize_uuid(BAR_UUID))
-    bar._arp_fn = lambda: {normalize_mac(IMPOSTOR_MAC): "192.168.1.60"}
+    bar._arp_fn = lambda: {"192.168.1.60": normalize_mac(IMPOSTOR_MAC)}
     assert not bar.online() and bar.wrong_device
     bar._identity.reset()
-    bar._arp_fn = lambda: {normalize_mac(BAR_MAC): "192.168.1.60"}
+    bar._arp_fn = lambda: {"192.168.1.60": normalize_mac(BAR_MAC)}
     assert bar.online()
 
 
 def test_arp_mac_lookup():
-    table = {normalize_mac(TV_A_MAC): "192.168.1.50"}
+    table = {"192.168.1.50": normalize_mac(TV_A_MAC)}
     assert discovery.arp_mac("192.168.1.50", lambda: table) == normalize_mac(TV_A_MAC)
     assert discovery.arp_mac("192.168.1.99", lambda: table) == ""
     assert discovery.mac_confirmed("192.168.1.50", TV_A_MAC, lambda: table)

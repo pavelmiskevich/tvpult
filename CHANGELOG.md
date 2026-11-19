@@ -4,6 +4,12 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- The ARP check works on macOS and on Linux without `net-tools` (#28): MACs with one-digit octets
+  (`8c:79:f5:a:1b:2c`) are understood, Linux reads `/proc/net/arp` or `ip neigh` first, and when no source of the
+  table works the log and the setup wizard say so. A TV that got a new address is found at once even while its
+  old ARP entry is still there (#29).
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
