@@ -4,6 +4,13 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Security
+- The HTTP server is harder to misuse (#32): no page may frame the remote (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'` — a site could otherwise make you click it); the page gets a strict
+  Content-Security-Policy with a fresh nonce for its one script; a client that stays silent for 10 seconds is
+  dropped instead of holding a thread; an unexpected error answers a fixed text (`internal`) and logs the
+  details; at most 20 keys per request; `true`/`false` are no longer taken as a volume level.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
