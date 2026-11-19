@@ -90,6 +90,7 @@ def t(key: str, **values: object) -> str:
 
 
 def page_strings() -> dict[str, dict[str, str]]:
-    """Both dictionaries, only the page's keys (without the "page." prefix), for embedding in the page."""
-    return {lang_: {k.removeprefix("page."): v for k, v in strings(lang_).items() if k.startswith("page.")}
+    """Both dictionaries, for embedding in the page: its own keys (without the "page." prefix) and the error
+    texts (as "err.<code>")."""
+    return {lang_: {k.removeprefix("page."): v for k, v in strings(lang_).items() if k.startswith(("page.", "err."))}
             for lang_ in LANGS}

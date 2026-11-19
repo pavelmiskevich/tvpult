@@ -27,6 +27,8 @@ from typing import Any
 
 import requests
 
+from .errors import TvpultError
+
 log = logging.getLogger(__name__)
 
 TV_PORT = 8001
@@ -199,7 +201,8 @@ class TvSighting:
     name: str
     year: int | None
     confirmed: bool  # ARP agrees with the reported MAC — only then may it be paired or used
-    note: str = ""
+    note: str = ""  # why it isn't confirmed (English) …
+    note_code: str = ""  # … and the same as an error code (errors.py), for the page and the CLI in their language
 
 
 def find_tvs(subnets: list[ipaddress.IPv4Network], *,
@@ -226,16 +229,11 @@ def find_tvs(subnets: list[ipaddress.IPv4Network], *,
             continue  # something else listens on 8001
         arp_mac = arp_by_ip.get(host, "")
         confirmed = arp_mac == ident["mac"]
-        note = ""
+        code = ""
         if not confirmed:
-            if ident.get("wired") and arp_mac:
-                note = "connected by cable: the network shows its Ethernet MAC — add it as lan_mac to confirm"
-            elif not arp_mac:
-                note = "the network didn't confirm its MAC (no ARP entry)"
-            else:
-                note = "the MAC it reports differs from the one the network sees — not trusted"
+            code = "tv_cabled" if ident.get("wired") and arp_mac else "tv_no_arp" if not arp_mac else "tv_mac_differs"
         seen.append(TvSighting(host, ident["mac"], ident["model"], ident["name"], ident.get("year"),
-                               confirmed, note))
+                               confirmed, str(TvpultError(code=code)) if code else "", code))
     return sorted(seen, key=lambda t: ipaddress.IPv4Address(t.host))
 
 

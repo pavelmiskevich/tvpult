@@ -166,7 +166,8 @@ def test_lan_page_is_served_but_the_api_needs_a_pin(lan):
     base, _ = lan
     status, _, _ = _call(base + "/")
     assert status == 200
-    assert _call(base + "/api/status")[:2] == (401, {"error": "pin_required"})
+    status, body = _call(base + "/api/status")[:2]
+    assert status == 401 and body["code"] == "pin_required"
     assert _call(base + "/api/tv/living/key", {"keys": ["ok"]}, X)[0] == 401
     assert _call(base + "/api/setup/scan", {}, X)[0] == 401
     assert _call(base + "/api/hello", {"client": "0" * 32}, X)[0] == 401

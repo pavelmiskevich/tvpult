@@ -348,17 +348,26 @@ const appName = (alias, fallback) => (APPS && APPS[alias] ? APPS[alias][LANG] ||
 const POWER = { "already on": "power.already_on", "woken from standby": "power.woken",
   "wake-on-lan sent": "power.wol_sent", "already off": "power.already_off", "turned off": "power.turned_off" };
 
+// An error code from the server ("offline", "wrong_pin"…) in the page's language; unknown codes: the server's text.
+function errText(code, params, fallback) {
+  return code && I18N && I18N.en["err." + code] ? t("err." + code, params) : fallback;
+}
+const capital = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+
 async function api(path, body) {
   const opt = body === undefined ? {} : {
     method: "POST", headers: { "Content-Type": "application/json", "X-Tvpult": "1" }, body: JSON.stringify(body),
   };
   const r = await fetch(path, opt);
   const data = await r.json().catch(() => ({}));
-  if (r.status === 401 && data.error === "pin_required") {  // a phone on the home network, not signed in yet
+  if (r.status === 401 && data.code === "pin_required") {  // a phone on the home network, not signed in yet
     if (!state.needPin) { state.needPin = true; render(); }
     const e = new Error(t("pin.needed")); e.pin = true; throw e;
   }
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  if (!r.ok) {  // errors come with a code: shown in the page's language (English text otherwise)
+    const e = new Error(capital(errText(data.code, data.params, data.error || r.statusText))); e.code = data.code;
+    throw e;
+  }
   return data;
 }
 
@@ -373,8 +382,7 @@ $("pinForm").addEventListener("submit", async (e) => {
     state.needPin = false; $("pinIn").value = "";
     hello(); refresh();
   } catch (err) {
-    $("pinMsg").textContent = err.message === "wrong PIN" ? t("pin.wrong") :
-      err.message.startsWith("too many") ? t("pin.locked") : err.message;
+    $("pinMsg").textContent = err.message;
   } finally {
     $("pinGo").disabled = false;
   }
@@ -641,7 +649,7 @@ function candidateCard(tv) {
   card.append(el("h2", null, tv.name || tv.model || "Samsung TV"));
   card.append(el("div", "meta", [tv.model, tv.year, tv.host].filter(Boolean).join(" · ")));
   if (tv.configured) { card.append(el("div", "ok", t("setup.already"))); return card; }
-  if (!tv.confirmed) { card.append(el("div", "note", tv.note || t("setup.unconfirmed"))); return card; }
+  if (!tv.confirmed) { card.append(el("div", "note", capital(errText(tv.note_code, {}, tv.note || t("setup.unconfirmed"))))); return card; }
   const row = el("div", "row");
   const input = el("input");
   input.type = "text"; input.maxLength = 40; input.value = ""; input.placeholder = t("setup.name_ph");
