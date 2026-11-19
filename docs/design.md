@@ -75,6 +75,14 @@ dictionaries have it. Discovery's reasons for not trusting a TV (`note`) have co
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:
 config `devices.toml` in the config dir, data (pairing tokens, `addresses.json`, `tvpult.log`, the shortcut icon)
 in the data dir — both `%LOCALAPPDATA%\tvpult` on Windows. A missing config is a first run, not an error.
+
+`devices.toml` is safe to edit by hand, so it is checked when read (`parse_config`): sections are tables, device
+ids are `[a-z0-9_-]{1,32}` (they become page addresses and the `token-<id>.txt` file name), `host` is an IPv4
+address of a private network (never a name), MACs and the Cast UUID parse, lists are lists. A mistake is one
+`ConfigError` naming the place (`[tv.living] host: "tv.lan" is not …`), in both languages. The command line prints
+it with the file path; `app` mode (the shortcut, no console) starts anyway and the page shows the mistake and the
+file instead of the remote — nothing is written to the file then. Every write (wizard, settings) checks the new
+text first and replaces the file in one step.
 Tests run with their own temporary directories (`tests/conftest.py`) and never touch the real ones.
 
 The desktop shortcut runs `pythonw -m tvpult app` next to the interpreter tvpult runs in — windowless, and the

@@ -9,6 +9,7 @@ Overrides, strongest first: CLI flags (use_paths), then TVPULT_CONFIG / TVPULT_D
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import shutil
@@ -18,6 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from platformdirs import user_config_path, user_data_path
+
+from .discovery import normalize_mac, normalize_uuid
+from .errors import TvpultError
 
 APP = "tvpult"
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -110,48 +114,121 @@ class Config:
         return not self.tvs and not self.soundbars
 
 
+class ConfigError(TvpultError):
+    """devices.toml can't be used. The message names the place: '[tv.living] host: "tv.lan" is not …'."""
+
+
 def load_config(path: Path | None = None) -> Config:
-    """Read the config; a missing file is an empty config (first run), not an error."""
+    """Read the config; a missing file is an empty config (first run), not an error. ConfigError if it's wrong."""
     path = Path(path) if path else config_file()
     if not path.exists():
         return Config()
-    return parse_config(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ConfigError(code="config_syntax", detail="not UTF-8 text") from e
+    return parse_config(text)
+
+
+# A device id is part of the page's addresses and of a file name (token-<id>.txt).
+DEVICE_ID = re.compile(r"[a-z0-9_-]{1,32}")
+
+
+def _table(value: object, where: str) -> dict:
+    if not isinstance(value, dict):
+        raise ConfigError(code="config_not_table", where=where)
+    return value
+
+
+def _text(table: dict, key: str, section: str, default: str | None = None) -> str:
+    if key not in table:
+        if default is None:
+            raise ConfigError(code="config_missing", where=f"[{section}]", key=key)
+        return default
+    if not isinstance(table[key], str):
+        raise ConfigError(code="config_not_text", where=f"[{section}] {key}")
+    return table[key]
+
+
+def _texts(value: object, where: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ConfigError(code="config_not_list", where=where)
+    return list(value)
+
+
+def _flag(table: dict, key: str, section: str) -> bool:
+    value = table.get(key, False)
+    if not isinstance(value, bool):
+        raise ConfigError(code="config_not_bool", where=f"[{section}] {key}")
+    return value
+
+
+def _host(table: dict, section: str) -> str:
+    """The device's address: a plain IPv4 address of a private network (never a name: it could point anywhere)."""
+    host = _text(table, "host", section)
+    try:
+        ip = ipaddress.IPv4Address(host)
+        ok = ip.is_private and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast)
+    except ValueError:
+        ok = False
+    if not ok:
+        raise ConfigError(code="config_bad_host", where=f"[{section}] host", value=host)
+    return host
+
+
+def _mac(table: dict, key: str, section: str) -> str:
+    value = _text(table, key, section, "")
+    if value and not normalize_mac(value):
+        raise ConfigError(code="config_bad_mac", where=f"[{section}] {key}", value=value)
+    return value
+
+
+def _devices(raw: dict, kind: str):
+    """(id, "kind.id", table) for each [kind.<id>] section."""
+    for dev_id, value in _table(raw.get(kind, {}), f"[{kind}]").items():
+        section = f"{kind}.{dev_id}"
+        if not DEVICE_ID.fullmatch(dev_id):
+            raise ConfigError(code="config_bad_id", where=f"[{section}]")
+        yield dev_id, section, _table(value, f"[{section}]")
+
+
+def _tv(tv_id: str, section: str, v: dict) -> TvConfig:
+    assume = _table(v.get("assume_apps", {}), f"[{section}] assume_apps")
+    return TvConfig(id=tv_id, name=_text(v, "name", section, tv_id), host=_host(v, section),
+                    mac=_mac(v, "mac", section), wake_on_lan=_flag(v, "wake_on_lan", section),
+                    lan_mac=_mac(v, "lan_mac", section),
+                    assume_apps={a: _text(assume, a, f"{section}.assume_apps") for a in assume})
+
+
+def _soundbar(bar_id: str, section: str, v: dict) -> SoundbarConfig:
+    uuid = _text(v, "uuid", section)
+    if len(normalize_uuid(uuid)) != 32:
+        raise ConfigError(code="config_bad_uuid", where=f"[{section}] uuid", value=uuid)
+    port = v.get("port", 8009)
+    if not isinstance(port, int) or isinstance(port, bool) or not 0 < port < 65536:
+        raise ConfigError(code="config_bad_port", where=f"[{section}] port")
+    return SoundbarConfig(id=bar_id, name=_text(v, "name", section, bar_id), host=_host(v, section), uuid=uuid,
+                          port=port, mac=_mac(v, "mac", section))
 
 
 def parse_config(text: str) -> Config:
-    raw = tomllib.loads(text)
-    tvs = {
-        tv_id: TvConfig(
-            id=tv_id,
-            name=str(v.get("name", tv_id)),
-            host=str(v["host"]),
-            mac=str(v.get("mac", "")),
-            wake_on_lan=bool(v.get("wake_on_lan", False)),
-            lan_mac=str(v.get("lan_mac", "")),
-            assume_apps={str(a): str(i) for a, i in v.get("assume_apps", {}).items()},
-        )
-        for tv_id, v in raw.get("tv", {}).items()
-    }
-    bars = {
-        bar_id: SoundbarConfig(
-            id=bar_id,
-            name=str(v.get("name", bar_id)),
-            host=str(v["host"]),
-            uuid=str(v["uuid"]),
-            port=int(v.get("port", 8009)),
-            mac=str(v.get("mac", "")),
-        )
-        for bar_id, v in raw.get("soundbar", {}).items()
-    }
-    apps = {
-        str(k): [str(i) for i in (v if isinstance(v, list) else [v])]
-        for k, v in raw.get("apps", {}).items()
-    }
-    quick = [str(a) for a in raw.get("ui", {}).get("quick_apps", [])]
-    wifi = {str(k).lower(): str(v) for k, v in raw.get("wifi", {}).items()}
-    subnets = [str(s) for s in raw.get("network", {}).get("scan_subnets", [])]
-    return Config(tvs=tvs, soundbars=bars, extra_apps=apps, quick_apps=quick, wifi_names=wifi,
-                  scan_subnets=subnets)
+    """Read devices.toml text; ConfigError (naming the section and the key) if anything in it is wrong."""
+    try:
+        raw = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(code="config_syntax", detail=e) from e
+    tvs = {tv_id: _tv(tv_id, section, v) for tv_id, section, v in _devices(raw, "tv")}
+    bars = {bar_id: _soundbar(bar_id, section, v) for bar_id, section, v in _devices(raw, "soundbar")}
+    apps = {}
+    for alias, ids in _table(raw.get("apps", {}), "[apps]").items():
+        apps[alias] = [ids] if isinstance(ids, str) else _texts(ids, f"[apps] {alias}")
+    ui = _table(raw.get("ui", {}), "[ui]")
+    wifi = _table(raw.get("wifi", {}), "[wifi]")
+    network = _table(raw.get("network", {}), "[network]")
+    return Config(tvs=tvs, soundbars=bars, extra_apps=apps,
+                  quick_apps=_texts(ui.get("quick_apps", []), "[ui] quick_apps"),
+                  wifi_names={bssid.lower(): _text(wifi, bssid, "wifi") for bssid in wifi},
+                  scan_subnets=_texts(network.get("scan_subnets", []), "[network] scan_subnets"))
 
 
 # --- writing (setup wizard) --------------------------------------------------------------
@@ -190,7 +267,8 @@ def toml_string(value: str) -> str:
 def add_tv_to_config(tv: TvConfig, path: Path | None = None) -> None:
     """Append a [tv.<id>] section to devices.toml; everything already there stays untouched.
 
-    The result is re-read; if it doesn't parse or doesn't contain the new TV, the old file comes back.
+    The new text is checked first (it must parse and contain the new TV) and replaces the file in one step,
+    so a wrong result or a crash mid-way leaves the old file.
     """
     path = Path(path) if path else config_file()
     if not re.fullmatch(r"[a-z0-9-]{1,32}", tv.id):
@@ -207,17 +285,17 @@ def add_tv_to_config(tv: TvConfig, path: Path | None = None) -> None:
         text = "# tvpult devices — written by the setup wizard; safe to edit by hand.\n\n" + section
     else:
         text = before + ("" if before.endswith("\n") or not before else "\n") + "\n" + section
+    if parse_config(text).tvs.get(tv.id) is None:  # ConfigError if the result is wrong: nothing written then
+        raise ValueError("the new TV is missing from the result")
+    _replace(path, text)
+
+
+def _replace(path: Path, text: str) -> None:
+    """Write devices.toml in one step: a temporary file next to it, then a rename."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    try:
-        if load_config(path).tvs.get(tv.id) is None:
-            raise ValueError("the new TV is missing after writing")
-    except (tomllib.TOMLDecodeError, ValueError, KeyError):
-        if before is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.write_text(before, encoding="utf-8")
-        raise
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 # --- editing (settings page) ---------------------------------------------------------------
@@ -245,10 +323,7 @@ def edit_config(change, path: Path | None = None) -> Config:
     change(doc)
     text = tomlkit.dumps(doc)
     result = parse_config(text)  # raises if the result isn't valid: nothing written then
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    _replace(path, text)
     return result
 
 

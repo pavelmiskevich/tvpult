@@ -4,6 +4,13 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- A mistake in `devices.toml` no longer ends in a traceback — or, from the desktop shortcut, in nothing at all
+  (#30). The file is checked when read; the message names the section and the key (`[tv.living] host: …`), in
+  English and Russian. The command line prints it with the file path; the shortcut opens the remote, which shows
+  the mistake and the file. A device id may only have `a-z`, `0-9`, `-` and `_`; `host` must be an IPv4 address of
+  the home network. The setup wizard writes the file in one step, like the settings page.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
