@@ -120,15 +120,20 @@ def test_a_reconnect_carries_on_from_the_key_that_failed(monkeypatch):
 
 
 # --- 5. `vol` arguments and which soundbar ------------------------------------------------------------------------
-BARS = ('[soundbar.a]\nhost = "192.168.1.60"\nuuid = "6f1c2a3b-1d2e-4f50-8a6b-00000000ba01"\n'
-        '[soundbar.b]\nhost = "192.168.1.61"\nuuid = "6f1c2a3b-1d2e-4f50-8a6b-00000000ba02"\n')
+BARS = (
+    '[soundbar.a]\nhost = "192.168.1.60"\nuuid = "6f1c2a3b-1d2e-4f50-8a6b-00000000ba01"\n'
+    '[soundbar.b]\nhost = "192.168.1.61"\nuuid = "6f1c2a3b-1d2e-4f50-8a6b-00000000ba02"\n'
+)
 
 
-@pytest.mark.parametrize(("args", "text"), [
-    (["vol", ""], "is not a volume"),
-    (["vol", "loud"], '"loud" is not a volume'),
-    (["vol", "30"], "say which with --bar (a, b)"),
-])
+@pytest.mark.parametrize(
+    ("args", "text"),
+    [
+        (["vol", ""], "is not a volume"),
+        (["vol", "loud"], '"loud" is not a volume'),
+        (["vol", "30"], "say which with --bar (a, b)"),
+    ],
+)
 def test_vol_explains_itself(capsys, args, text):
     path = config.config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,8 +160,9 @@ class FakeHome:
 
 
 def _server(role, auth, presence):
-    handler = make_handler(FakeHome(), {"127.0.0.1"}, presence, role=role, auth=auth,
-                           lan_url="http://192.168.1.20:8765/")
+    handler = make_handler(
+        FakeHome(), {"127.0.0.1"}, presence, role=role, auth=auth, lan_url="http://192.168.1.20:8765/"
+    )
     srv = Listener(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, f"http://127.0.0.1:{srv.server_address[1]}"
@@ -200,10 +206,13 @@ def test_the_computer_page_says_when_the_lan_address_changed(tmp_path, monkeypat
 
 
 # --- 8. Wake-on-LAN with the real mask -------------------------------------------------------------------------
-@pytest.mark.parametrize(("tv_host", "targets"), [
-    ("192.168.2.50", ("192.168.3.255", "255.255.255.255")),  # in the laptop's /22
-    ("10.0.0.50", ("10.0.0.255", "192.168.3.255", "255.255.255.255")),  # elsewhere: taken as a /24
-])
+@pytest.mark.parametrize(
+    ("tv_host", "targets"),
+    [
+        ("192.168.2.50", ("192.168.3.255", "255.255.255.255")),  # in the laptop's /22
+        ("10.0.0.50", ("10.0.0.255", "192.168.3.255", "255.255.255.255")),  # elsewhere: taken as a /24
+    ],
+)
 def test_wol_uses_the_networks_real_mask(monkeypatch, tv_host, targets):
     monkeypatch.setattr(discovery, "default_local_ip", lambda: "192.168.0.20")
     monkeypatch.setattr(discovery, "adapter_addresses", lambda: [("192.168.0.20", 22)])

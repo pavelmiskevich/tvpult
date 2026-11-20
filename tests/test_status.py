@@ -18,8 +18,11 @@ class FakeClock:
 
 
 def _home():
-    home = Home(Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
-                local_ip_fn=lambda: None, adapters_fn=list)
+    home = Home(
+        Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
+        local_ip_fn=lambda: None,
+        adapters_fn=list,
+    )
     asked = []
 
     def status():

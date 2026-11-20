@@ -13,25 +13,63 @@ from typing import Any
 # deliberately absent: the service menu can change settings that have no easy undo.
 ALLOWED_KEYS: frozenset[str] = frozenset(
     {
-        "KEY_POWER", "KEY_VOLUP", "KEY_VOLDOWN", "KEY_MUTE",
-        "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_ENTER",
-        "KEY_RETURN", "KEY_EXIT", "KEY_HOME", "KEY_MENU", "KEY_SOURCE",
-        "KEY_INFO", "KEY_GUIDE", "KEY_CHUP", "KEY_CHDOWN", "KEY_PRECH",
-        "KEY_PLAY", "KEY_PAUSE", "KEY_STOP", "KEY_FF", "KEY_REWIND",
-        "KEY_RED", "KEY_GREEN", "KEY_YELLOW", "KEY_CYAN",
+        "KEY_POWER",
+        "KEY_VOLUP",
+        "KEY_VOLDOWN",
+        "KEY_MUTE",
+        "KEY_UP",
+        "KEY_DOWN",
+        "KEY_LEFT",
+        "KEY_RIGHT",
+        "KEY_ENTER",
+        "KEY_RETURN",
+        "KEY_EXIT",
+        "KEY_HOME",
+        "KEY_MENU",
+        "KEY_SOURCE",
+        "KEY_INFO",
+        "KEY_GUIDE",
+        "KEY_CHUP",
+        "KEY_CHDOWN",
+        "KEY_PRECH",
+        "KEY_PLAY",
+        "KEY_PAUSE",
+        "KEY_STOP",
+        "KEY_FF",
+        "KEY_REWIND",
+        "KEY_RED",
+        "KEY_GREEN",
+        "KEY_YELLOW",
+        "KEY_CYAN",
         *(f"KEY_{d}" for d in range(10)),
     }
 )
 
 # Short aliases accepted by the CLI ("tvpult key living up enter").
 KEY_ALIASES: dict[str, str] = {
-    "power": "KEY_POWER", "up": "KEY_UP", "down": "KEY_DOWN", "left": "KEY_LEFT",
-    "right": "KEY_RIGHT", "ok": "KEY_ENTER", "enter": "KEY_ENTER", "back": "KEY_RETURN",
-    "home": "KEY_HOME", "menu": "KEY_MENU", "source": "KEY_SOURCE", "vol+": "KEY_VOLUP",
-    "vol-": "KEY_VOLDOWN", "mute": "KEY_MUTE", "ch+": "KEY_CHUP", "ch-": "KEY_CHDOWN",
-    "play": "KEY_PLAY", "pause": "KEY_PAUSE", "stop": "KEY_STOP", "info": "KEY_INFO",
+    "power": "KEY_POWER",
+    "up": "KEY_UP",
+    "down": "KEY_DOWN",
+    "left": "KEY_LEFT",
+    "right": "KEY_RIGHT",
+    "ok": "KEY_ENTER",
+    "enter": "KEY_ENTER",
+    "back": "KEY_RETURN",
+    "home": "KEY_HOME",
+    "menu": "KEY_MENU",
+    "source": "KEY_SOURCE",
+    "vol+": "KEY_VOLUP",
+    "vol-": "KEY_VOLDOWN",
+    "mute": "KEY_MUTE",
+    "ch+": "KEY_CHUP",
+    "ch-": "KEY_CHDOWN",
+    "play": "KEY_PLAY",
+    "pause": "KEY_PAUSE",
+    "stop": "KEY_STOP",
+    "info": "KEY_INFO",
     "exit": "KEY_EXIT",
 }
+
 
 class UnknownKey(ValueError):
     pass
@@ -92,31 +130,53 @@ def parse_catalog(raw: Any) -> dict[str, App]:
     apps: dict[str, App] = {}
     seen_ids: dict[str, str] = {}
     for alias, a in raw["apps"].items():
-        _check(isinstance(alias, str) and bool(_ALIAS.fullmatch(alias)), repr(alias),
-               "alias: lowercase letters, digits, . _ - (up to 40)")
+        _check(
+            isinstance(alias, str) and bool(_ALIAS.fullmatch(alias)),
+            repr(alias),
+            "alias: lowercase letters, digits, . _ - (up to 40)",
+        )
         _check(isinstance(a, dict) and set(a) == {"names", "regions", "ids"}, alias, '"names", "regions", "ids"')
         names, regions, ids = a["names"], a["regions"], a["ids"]
-        _check(isinstance(names, dict) and isinstance(names.get("en"), str) and names["en"].strip() != "", alias,
-               'names: an object with at least "en"')
+        _check(
+            isinstance(names, dict) and isinstance(names.get("en"), str) and names["en"].strip() != "",
+            alias,
+            'names: an object with at least "en"',
+        )
         _check(set(names) <= set(LANGS), alias, f"names: only {', '.join(LANGS)}")
-        _check(all(isinstance(v, str) and v.strip() and len(v) <= 40 for v in names.values()), alias,
-               "names: non-empty text, up to 40 characters")
-        _check(isinstance(regions, list) and regions and all(isinstance(r, str) and _REGION.fullmatch(r)
-                                                             for r in regions), alias,
-               'regions: a list of "*" or country codes like "RU"')
-        _check(len(set(regions)) == len(regions) and ("*" not in regions or regions == ["*"]), alias,
-               'regions: no duplicates; "*" alone')
+        _check(
+            all(isinstance(v, str) and v.strip() and len(v) <= 40 for v in names.values()),
+            alias,
+            "names: non-empty text, up to 40 characters",
+        )
+        _check(
+            isinstance(regions, list) and regions and all(isinstance(r, str) and _REGION.fullmatch(r) for r in regions),
+            alias,
+            'regions: a list of "*" or country codes like "RU"',
+        )
+        _check(
+            len(set(regions)) == len(regions) and ("*" not in regions or regions == ["*"]),
+            alias,
+            'regions: no duplicates; "*" alone',
+        )
         _check(isinstance(ids, list) and ids, alias, "ids: a non-empty list")
         entries = []
         for i in ids:
-            _check(isinstance(i, dict) and "id" in i and set(i) <= {"id", "seen"}, alias,
-                   'each id: {"id": "...", "seen": [years]}')
+            _check(
+                isinstance(i, dict) and "id" in i and set(i) <= {"id", "seen"},
+                alias,
+                'each id: {"id": "...", "seen": [years]}',
+            )
             _check(isinstance(i["id"], str) and bool(_APP_ID.fullmatch(i["id"])), alias, f"bad app id {i['id']!r}")
             _check(i["id"] not in seen_ids, alias, f"id {i['id']} is also under {seen_ids.get(i['id'])}")
             seen_ids[i["id"]] = alias
             years = i.get("seen", [])
-            _check(isinstance(years, list) and all(type(y) is int and 2015 <= y <= 2040 for y in years)
-                   and years == sorted(set(years)), alias, "seen: model years, ascending, e.g. [2017, 2022]")
+            _check(
+                isinstance(years, list)
+                and all(type(y) is int and 2015 <= y <= 2040 for y in years)
+                and years == sorted(set(years)),
+                alias,
+                "seen: model years, ascending, e.g. [2017, 2022]",
+            )
             entries.append(AppId(i["id"], tuple(years)))
         apps[alias] = App(alias, dict(names), tuple(regions), tuple(entries))
     return apps

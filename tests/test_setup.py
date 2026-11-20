@@ -16,10 +16,17 @@ TV_B = "02:00:00:00:32:01"
 
 
 # --- ids and TOML ---------------------------------------------------------------------------------
-@pytest.mark.parametrize("name,expected", [
-    ("Гостиная", "gostinaya"), ("Living room", "living-room"), ("Детская №2", "detskaya-2"),
-    ("!!!", "tv"), ("", "tv"), ("Spalnya", "spalnya"),
-])
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Гостиная", "gostinaya"),
+        ("Living room", "living-room"),
+        ("Детская №2", "detskaya-2"),
+        ("!!!", "tv"),
+        ("", "tv"),
+        ("Spalnya", "spalnya"),
+    ],
+)
 def test_slugify(name, expected):
     assert slugify(name) == expected
 
@@ -50,8 +57,10 @@ def test_add_tv_creates_a_new_config():
 def test_add_tv_keeps_everything_already_there():
     path = config.config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    original = ('# my notes — keep me\n[tv.bedroom]\nname = "Bedroom"\nhost = "192.168.1.51"\n'
-                '[ui]\nquick_apps = ["youtube"]   # mine\n[apps]\nmyapp = "123"')  # no newline at the end
+    original = (
+        '# my notes — keep me\n[tv.bedroom]\nname = "Bedroom"\nhost = "192.168.1.51"\n'
+        '[ui]\nquick_apps = ["youtube"]   # mine\n[apps]\nmyapp = "123"'
+    )  # no newline at the end
     path.write_text(original, encoding="utf-8")
     add_tv_to_config(_tv(name='Tricky "name" \\ here'))
     text = path.read_text(encoding="utf-8")
@@ -78,8 +87,12 @@ def test_add_tv_duplicate_id_restores_the_old_file():
 
 # --- the wizard in Home ------------------------------------------------------------------------------
 def _home(sightings, tvs=None):
-    return Home(Config(tvs=tvs or {}), local_ip_fn=lambda: "192.168.1.20", adapters_fn=list,
-                find_tvs_fn=lambda subnets: sightings)
+    return Home(
+        Config(tvs=tvs or {}),
+        local_ip_fn=lambda: "192.168.1.20",
+        adapters_fn=list,
+        find_tvs_fn=lambda subnets: sightings,
+    )
 
 
 def _sighting(host="192.168.1.50", mac=TV_A, year=2022, confirmed=True, note="", note_code=""):
@@ -217,10 +230,16 @@ def test_api_scan_and_pair(paired):
     assert dispatch(home, "POST", "/api/setup/pair", {"cid": "c1", "name": "Кухня"})["id"] == "kuhnya"
 
 
-@pytest.mark.parametrize("body,status", [
-    ({}, 400), ({"cid": "192.168.1.50"}, 400), ({"cid": "c1", "name": "x" * 41}, 400),
-    ({"cid": "c1", "name": 5}, 400), ({"cid": "c7", "name": "X"}, 409),
-])
+@pytest.mark.parametrize(
+    "body,status",
+    [
+        ({}, 400),
+        ({"cid": "192.168.1.50"}, 400),
+        ({"cid": "c1", "name": "x" * 41}, 400),
+        ({"cid": "c1", "name": 5}, 400),
+        ({"cid": "c7", "name": "X"}, 409),
+    ],
+)
 def test_api_pair_validation(body, status):
     home = _home([_sighting()])
     home.setup_scan()

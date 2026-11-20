@@ -6,7 +6,7 @@ import struct
 from pathlib import Path
 
 SIZE = 64
-_BODY = (0x2A, 0x1F, 0x1B, 0xFF)    # BGRA: dark frame
+_BODY = (0x2A, 0x1F, 0x1B, 0xFF)  # BGRA: dark frame
 _SCREEN = (0xF6, 0x6D, 0x2F, 0xFF)  # #2f6df6, the remote's accent colour
 _GLARE = (0xFF, 0x9C, 0x6B, 0xFF)
 _CLEAR = (0, 0, 0, 0)
@@ -28,7 +28,7 @@ def pixel(x: int, y: int) -> tuple[int, int, int, int]:
         return _SCREEN
     if _inside_rounded(x, y, 4, 14, 59, 51, 6):
         return _BODY
-    if 28 <= x <= 35 and 52 <= y <= 56:   # neck
+    if 28 <= x <= 35 and 52 <= y <= 56:  # neck
         return _BODY
     if _inside_rounded(x, y, 18, 56, 45, 60, 2):  # foot
         return _BODY

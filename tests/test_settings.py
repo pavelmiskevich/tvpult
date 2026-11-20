@@ -55,8 +55,12 @@ def cfg_file():
 
 
 def _home():
-    return Home(load_config(), local_ip_fn=lambda: "192.168.1.20", adapters_fn=list,
-                locate_fn=lambda wanted, subnets, hints=None: {})
+    return Home(
+        load_config(),
+        local_ip_fn=lambda: "192.168.1.20",
+        adapters_fn=list,
+        locate_fn=lambda wanted, subnets, hints=None: {},
+    )
 
 
 def _token(tv_id, text="t"):
@@ -91,15 +95,18 @@ def test_rename_a_soundbar(cfg_file):
     assert load_config().soundbars["bar"].name == "Колонка"
 
 
-@pytest.mark.parametrize("call", [
-    lambda: update_device("tv", "nope", name="X"),
-    lambda: update_device("tv", "living", name="   "),
-    lambda: update_device("soundbar", "bar", wake_on_lan=True),
-    lambda: update_device("speaker", "bar", name="X"),
-    lambda: remove_device("tv", "nope"),
-    lambda: set_quick_apps(["ok", "not ok"]),
-    lambda: set_quick_apps([f"a{i}" for i in range(13)]),
-])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: update_device("tv", "nope", name="X"),
+        lambda: update_device("tv", "living", name="   "),
+        lambda: update_device("soundbar", "bar", wake_on_lan=True),
+        lambda: update_device("speaker", "bar", name="X"),
+        lambda: remove_device("tv", "nope"),
+        lambda: set_quick_apps(["ok", "not ok"]),
+        lambda: set_quick_apps([f"a{i}" for i in range(13)]),
+    ],
+)
 def test_bad_edits_leave_the_file_alone(cfg_file, call):
     with pytest.raises((KeyError, ValueError)):
         call()
@@ -249,32 +256,37 @@ def test_quick_apps_apply_at_once(cfg_file):
 # --- the API -----------------------------------------------------------------------------------------------------
 def test_api_rename_and_quick(cfg_file):
     home = _home()
-    assert dispatch(home, "POST", "/api/settings/device",
-                    {"kind": "soundbar", "id": "bar", "name": "Колонка"})["name"] == "Колонка"
+    assert (
+        dispatch(home, "POST", "/api/settings/device", {"kind": "soundbar", "id": "bar", "name": "Колонка"})["name"]
+        == "Колонка"
+    )
     assert dispatch(home, "POST", "/api/settings/quick", {"apps": ["okko"]}) == {"quick": ["okko"]}
     assert dispatch(home, "POST", "/api/settings/remove", {"kind": "tv", "id": "bedroom"}) == {"removed": "bedroom"}
     assert set(load_config().tvs) == {"living"}
 
 
-@pytest.mark.parametrize("path,body,status", [
-    ("device", {}, 400),
-    ("device", {"kind": "tv", "id": "living"}, 400),  # nothing to change
-    ("device", {"kind": "tv", "id": "living", "name": ""}, 400),
-    ("device", {"kind": "tv", "id": "living", "name": "x" * 41}, 400),
-    ("device", {"kind": "tv", "id": "living", "name": 5}, 400),
-    ("device", {"kind": "tv", "id": "living", "wake_on_lan": "yes"}, 400),
-    ("device", {"kind": "soundbar", "id": "bar", "wake_on_lan": True}, 400),
-    ("device", {"kind": "tv", "id": "../etc", "name": "X"}, 400),
-    ("device", {"kind": "tv", "id": "nope", "name": "X"}, 409),
-    ("remove", {"kind": "lamp", "id": "living"}, 400),
-    ("unpair", {"kind": "soundbar", "id": "bar"}, 400),
-    ("pair", {"kind": "soundbar", "id": "bar"}, 400),
-    ("quick", {"apps": "youtube"}, 400),
-    ("quick", {"apps": ["you tube"]}, 400),
-    ("quick", {"apps": [1]}, 400),
-    ("quick", {"apps": [f"a{i}" for i in range(13)]}, 400),
-    ("nothing", {}, 404),
-])
+@pytest.mark.parametrize(
+    "path,body,status",
+    [
+        ("device", {}, 400),
+        ("device", {"kind": "tv", "id": "living"}, 400),  # nothing to change
+        ("device", {"kind": "tv", "id": "living", "name": ""}, 400),
+        ("device", {"kind": "tv", "id": "living", "name": "x" * 41}, 400),
+        ("device", {"kind": "tv", "id": "living", "name": 5}, 400),
+        ("device", {"kind": "tv", "id": "living", "wake_on_lan": "yes"}, 400),
+        ("device", {"kind": "soundbar", "id": "bar", "wake_on_lan": True}, 400),
+        ("device", {"kind": "tv", "id": "../etc", "name": "X"}, 400),
+        ("device", {"kind": "tv", "id": "nope", "name": "X"}, 409),
+        ("remove", {"kind": "lamp", "id": "living"}, 400),
+        ("unpair", {"kind": "soundbar", "id": "bar"}, 400),
+        ("pair", {"kind": "soundbar", "id": "bar"}, 400),
+        ("quick", {"apps": "youtube"}, 400),
+        ("quick", {"apps": ["you tube"]}, 400),
+        ("quick", {"apps": [1]}, 400),
+        ("quick", {"apps": [f"a{i}" for i in range(13)]}, 400),
+        ("nothing", {}, 404),
+    ],
+)
 def test_api_validation(cfg_file, path, body, status):
     with pytest.raises(ApiError) as e:
         dispatch(_home(), "POST", f"/api/settings/{path}", body)
@@ -289,8 +301,12 @@ def test_settings_need_post():
 
 
 def test_home_without_file_rename_fails_cleanly():
-    home = Home(Config(tvs={"x": TvConfig("x", "X", "192.168.1.50", TV_A)},
-                       soundbars={"b": SoundbarConfig("b", "B", "192.168.1.60", "u")}))
+    home = Home(
+        Config(
+            tvs={"x": TvConfig("x", "X", "192.168.1.50", TV_A)},
+            soundbars={"b": SoundbarConfig("b", "B", "192.168.1.60", "u")},
+        )
+    )
     with pytest.raises(DeviceError, match="not changed"):
         home.update_device("tv", "x", name="Y")  # nothing on disk to edit
     assert home.tv("x").cfg.name == "X"
