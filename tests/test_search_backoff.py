@@ -24,6 +24,7 @@ class World:
         home = Home(Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
                     locate_fn=locate, local_ip_fn=lambda: self.ip, adapters_fn=list)
         home._wall = lambda: self.t
+        home._clock = lambda: self.t  # the status snapshot (#33) ages on the same clock
         home.tvs["living"].status = lambda: {"id": "living", "kind": "tv", "online": self.tv_on}
         home.relocate_in_background = home._search_for  # synchronous, for the test
         return home
