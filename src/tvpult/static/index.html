@@ -63,6 +63,9 @@
     background: var(--bg); color: var(--text); font: 600 32px/1 ui-monospace, monospace; letter-spacing: .3em;
     text-align: center; }
   .pin-input:focus { outline: 3px solid var(--ring); outline-offset: 1px; }
+  .cfg-error { color: var(--danger); font-size: 15px; margin: 0 0 10px; overflow-wrap: anywhere; }
+  .cfg-file { font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted); margin: 0 0 10px;
+              overflow-wrap: anywhere; }
   .pin-msg { min-height: 1.4em; margin: 10px 0 0; color: var(--danger); font-size: 14px; }
   details.phone summary { cursor: pointer; font-weight: 600; list-style-position: inside; }
   .phone-body { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; align-items: center; }
@@ -142,6 +145,16 @@
 <body>
 <main>
   <nav class="tabs" role="tablist" id="tabs"><span class="tab" data-i18n="loading">Loading…</span></nav>
+
+  <!-- devices.toml couldn't be read (app mode starts anyway): what and where, nothing else -->
+  <section id="cfg" hidden>
+    <div class="card">
+      <h1 class="setup-title" data-i18n="cfg.title"></h1>
+      <p class="cfg-error" id="cfgError"></p>
+      <p class="cfg-file" id="cfgFile"></p>
+      <p class="setup-msg" data-i18n="cfg.fix"></p>
+    </div>
+  </section>
 
   <!-- Setup wizard: shown when nothing is configured, or from the "+ ТВ" tab -->
   <section id="setup" hidden>
@@ -289,6 +302,7 @@
         <p class="lan-url" id="lanUrl"></p>
         <p class="setup-msg" data-i18n="phone.pin"></p>
         <p class="lan-pin" id="lanPin"></p>
+        <p class="pin-msg" id="lanWarn" role="status"></p>
         <button class="b" id="lanNewPin" type="button" data-i18n="phone.new_pin"></button>
       </div>
     </div>
@@ -399,6 +413,10 @@ async function loadLan() {
   $("phone").hidden = !info.enabled;
   if (!info.enabled) return;
   $("lanQr").src = info.qr; $("lanUrl").textContent = info.url; $("lanPin").textContent = info.pin;
+  // Too many wrong PINs pause sign-in for everyone until a new PIN is made here: say so, and open the panel.
+  $("lanWarn").textContent = info.paused ? t("phone.paused", { n: info.wrong_pins })
+    : info.wrong_pins ? t("phone.wrong_pins", { n: info.wrong_pins }) : "";
+  if (info.paused) $("phone").open = true;
   const list = $("lanSessions");
   if (!info.sessions.length) { list.replaceChildren(el("span", "setup-msg", t("phone.none"))); return; }
   list.replaceChildren(...info.sessions.map((s) => {
@@ -736,10 +754,16 @@ function renderBar(d) {
 function render() {
   if (!current() && state.devices.length) state.sel = state.devices[0].id;
   $("pin").hidden = !state.needPin;
-  $("tabs").hidden = state.needPin;
-  if (state.needPin) {  // nothing else until signed in
+  $("cfg").hidden = state.needPin || !state.cfgError;
+  $("tabs").hidden = state.needPin || !!state.cfgError;
+  if (state.needPin || state.cfgError) {  // nothing else until signed in / until devices.toml is fixed
     ["setup", "settings", "tv", "bar", "hint"].forEach((id) => ($(id).hidden = true));
-    setTimeout(() => $("pinIn").focus(), 0);
+    if (state.needPin) setTimeout(() => $("pinIn").focus(), 0);
+    else {
+      const e = state.cfgError;
+      $("cfgError").textContent = capital(errText(e.code, e.params, e.error));
+      $("cfgFile").textContent = e.file;
+    }
     return;
   }
   renderTabs();
@@ -761,7 +785,7 @@ function render() {
 async function refresh() {
   try {
     const s = await api("/api/status");
-    state.devices = s.devices; state.quick = s.quick || [];
+    state.devices = s.devices; state.quick = s.quick || []; state.cfgError = s.config_error || null;
     if (s.setup && state.setupAuto) { state.setupAuto = false; openSetup(); return; }  // first run: the wizard
     render();
   }

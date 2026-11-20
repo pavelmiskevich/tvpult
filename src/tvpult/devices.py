@@ -561,6 +561,8 @@ class Home:
         self._candidates: dict[str, dict[str, Any]] = {}
         self._setup_lock = threading.Lock()  # one pairing at a time (wizard and re-pairing)
         self._config_lock = threading.Lock()  # one writer of devices.toml at a time
+        # devices.toml couldn't be read (app mode starts anyway and the page shows this); nothing is written then
+        self.config_error: paths.ConfigError | None = None
 
     def devices(self) -> list[SamsungTv | CastSoundbar]:
         return [*self.tvs.values(), *self.bars.values()]
@@ -568,7 +570,7 @@ class Home:
     # --- setup wizard -------------------------------------------------------------
     @property
     def setup_needed(self) -> bool:
-        return self.config.empty
+        return self.config.empty and self.config_error is None
 
     def setup_scan(self) -> list[dict[str, Any]]:
         """Find every TV for the wizard; each gets a short candidate id (`cid`) for setup_pair.
@@ -589,6 +591,8 @@ class Home:
             return {"id": t["configured"], "already": True}
         if not t["confirmed"]:
             raise DeviceError(code=t.get("note_code") or "not_confirmed")
+        if self.config_error is not None:
+            raise DeviceError(code="config_broken")
         if not self._setup_lock.acquire(blocking=False):
             raise DeviceError(code=PAIRING_BUSY)
         try:
@@ -622,10 +626,12 @@ class Home:
 
     def _write_config(self, fn, *args, **kwargs) -> None:
         """Change devices.toml; a config error becomes a DeviceError and the file stays as it was."""
+        if self.config_error is not None:
+            raise DeviceError(code="config_broken")
         with self._config_lock:
             try:
                 fn(*args, **kwargs)
-            except (KeyError, ValueError, OSError) as e:
+            except (KeyError, ValueError, OSError, paths.ConfigError) as e:
                 raise DeviceError(code="config_not_changed", detail=e) from e
 
     def update_device(self, kind: str, dev_id: str, name: str | None = None,

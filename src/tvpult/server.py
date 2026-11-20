@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 
 from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey, app_names
-from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
+from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name, config_file
 from .devices import DeviceError, Home
 from .errors import TvpultError
 from .i18n import page_strings, t
@@ -61,8 +61,11 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     """Route one API call. Pure apart from the device calls, so it is easy to test."""
     if method == "GET" and path == "/api/status":
         quick = getattr(getattr(home, "config", None), "quick_apps", [])
-        return {"devices": home.status(rediscover="background"), "quick": quick,
-                "setup": bool(getattr(home, "setup_needed", False))}
+        out = {"devices": home.status(rediscover="background"), "quick": quick,
+               "setup": bool(getattr(home, "setup_needed", False))}
+        if (broken := getattr(home, "config_error", None)) is not None:  # app mode with a wrong devices.toml
+            out["config_error"] = {**broken.payload(), "file": str(config_file())}
+        return out
     if method != "POST":
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     if path == "/api/setup/scan":
@@ -352,7 +355,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             if auth is None or not lan_url:
                 return {"enabled": False}
             return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
-                    "sessions": auth.sessions()}
+                    "sessions": auth.sessions(), "paused": auth.paused, "wrong_pins": auth.wrong_pins()}
 
         def do_GET(self):
             if not self._guard():
