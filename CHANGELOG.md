@@ -26,6 +26,14 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 - No console window flashes while the remote runs from the desktop shortcut (#36): `arp`, `tailscale` and
   PowerShell are started with `CREATE_NO_WINDOW` (`tools.run_tool`). Started from `pythonw`, a console program
   otherwise gets a visible console window of its own — once a minute per TV for the ARP check.
+- Rough edges of the command line and shortcut mode (#37): a busy port is one line naming it and suggesting
+  `--port` (no traceback, nothing left listening; on Windows a second server can no longer share the port);
+  starting faster (no reverse-DNS lookup of the listening address); `app --lan` on a remote already running
+  without phone access says so; a TV dropping between two calls is "offline", not a traceback; a key sequence
+  interrupted by a reconnect carries on from the failed key instead of sending the first ones again; `vol`
+  explains a wrong value and asks which soundbar when there are several; a phone no longer keeps shortcut mode
+  running after the window is closed; the computer's page says when the LAN address changed; Wake-on-LAN uses
+  the network's real mask.
 
 ### Security
 - PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from

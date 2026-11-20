@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import ipaddress
 import logging
 import socket
 import threading
@@ -368,11 +369,16 @@ class SamsungTv:
         norm = [normalize_key(k) for k in keys]
         self._require_online()
 
+        sent: list[str] = []
+
         def go(tv):
-            for i, k in enumerate(norm):
-                if i:
+            # After a reconnect (_with_remote tries twice) carry on from the key that failed: the ones
+            # already sent must not be sent again ("vol+ vol+ vol+" failing at the third made five).
+            for k in norm[len(sent):]:
+                if sent:
                     time.sleep(0.15)  # spacing only between keys of one sequence
                 tv.send_key(k)
+                sent.append(k)
             return norm
 
         return self._with_remote(go)
@@ -413,17 +419,32 @@ class SamsungTv:
         return app_id
 
     def wol_targets(self) -> tuple[str, ...]:
-        """Broadcast addresses for Wake-on-LAN: the TV's last network, the laptop's, and the generic one."""
-        targets = [subnet_broadcast(self.host)]
+        """Broadcast addresses for Wake-on-LAN: the TV's last network, the laptop's, and the generic one.
+
+        The laptop's network has its real mask (from the adapter); a TV in it uses the same broadcast.
+        Anything else is taken as a /24.
+        """
         local = discovery.default_local_ip()
-        if local:
+        net = discovery.adapter_network(local, discovery.adapter_addresses()) if local else None
+        tv_in_net = net is not None and ipaddress.IPv4Address(self.host) in net
+        targets = [str(net.broadcast_address) if tv_in_net else subnet_broadcast(self.host)]
+        if net is not None:
+            targets.append(str(net.broadcast_address))
+        elif local:
             targets.append(subnet_broadcast(local))
         targets.append("255.255.255.255")
         return tuple(dict.fromkeys(targets))
 
+    def _power_state(self) -> str:
+        """What the TV says about its power; a TV that dropped off since online() is just offline."""
+        try:
+            return self.info().get("PowerState", "on")
+        except (requests.RequestException, ValueError) as e:
+            raise DeviceError(code="offline", name=self.cfg.name) from e
+
     def power_on(self) -> str:
         if self.online():
-            state = self.info().get("PowerState", "on")
+            state = self._power_state()
             if state == "on":
                 return "already on"
             self.send_keys(["KEY_POWER"])  # 2022 sets in network standby
@@ -435,7 +456,7 @@ class SamsungTv:
         return "wake-on-lan sent"
 
     def power_off(self) -> str:
-        if not self.online() or self.info().get("PowerState", "on") != "on":
+        if not self.online() or self._power_state() != "on":
             return "already off"
         self.send_keys(["KEY_POWER"])
         self.switched_off = True
@@ -785,8 +806,10 @@ class Home:
             raise DeviceError(code="no_tv", id=tv_id, have=", ".join(self.tvs)) from None
 
     def bar(self, bar_id: str | None = None) -> CastSoundbar:
-        if bar_id is None and len(self.bars) == 1:
-            return next(iter(self.bars.values()))
+        if bar_id is None:
+            if len(self.bars) == 1:
+                return next(iter(self.bars.values()))
+            raise DeviceError(code="which_soundbar" if self.bars else "no_soundbars", have=", ".join(self.bars))
         try:
             return self.bars[bar_id or ""]
         except KeyError:

@@ -185,6 +185,15 @@ changes in samsungtvws and is not done yet.
 (`sendBeacon`). Last page closed → stop after 8 s (room for a reload). A tab gone without bye counts as closed
 after 3 min (browsers slow hidden-tab timers to ~1/min). Nobody opened the page in 2 min → stop.
 `bye` can't carry the custom header, so it is accepted only for a random 128-bit client id that said hello.
+Only pages on this computer count: shortcut mode is the window here, so a phone with the page open (`--lan`)
+doesn't keep the server and its LAN listener running after that window is closed.
+
+Starting `app` again while it runs just opens the window. If the new start asked for `--lan` and the running
+one has no LAN listener, it says so (close the window, start again); `--tailnet` can't be told from outside
+and isn't checked. The LAN address is taken at start; after a move to another network the computer's page says
+so and a restart picks the new one. A port in use is one line naming it and suggesting `--port` (and in the log,
+for the shortcut); on Windows the port is taken exclusively, since `SO_REUSEADDR` there would let a second
+server share it. Listeners skip `HTTPServer`'s reverse-DNS lookup of their own address (seconds at start).
 
 The shortcut runs `pythonw -m tvpult app` (no console window). Console programs started from it — `arp`,
 `tailscale`, PowerShell — go through `tools.run_tool` with `CREATE_NO_WINDOW`: otherwise Windows gives each
