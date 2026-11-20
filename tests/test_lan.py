@@ -295,7 +295,7 @@ def test_shortcut_with_lan_adds_the_flag(monkeypatch, tmp_path):
     from tvpult import cli
 
     seen = {}
-    monkeypatch.setattr(cli, "shortcut_target", lambda: ("pythonw.exe", "-m tvpult app"))
+    monkeypatch.setattr(cli, "shortcut_target", lambda platform=None: ("pythonw.exe", "-m tvpult app"))
     monkeypatch.setattr(cli, "shortcut_script", lambda t, a, w, i: seen.setdefault("args", a) and "")
 
     class Done(Exception):
@@ -306,7 +306,7 @@ def test_shortcut_with_lan_adds_the_flag(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli.subprocess, "run", stop)
     with pytest.raises(Done):
-        cli._make_shortcut(lan=True)
+        cli._make_shortcut(lan=True, platform="win32")
     assert seen["args"] == "-m tvpult app --lan"
 
 

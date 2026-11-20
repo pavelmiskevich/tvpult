@@ -9,13 +9,14 @@ One Python process: a command line (`tvpult …`) and a small HTTP server with o
 
 | Module | Role |
 |---|---|
-| `cli.py` | commands, server start, shortcut mode, desktop shortcut creation |
+| `cli.py` | commands, server start, shortcut mode, desktop shortcut creation (Windows) |
+| `shortcuts.py` | the shortcut on Linux (`.desktop`) and macOS (an app bundle) |
 | `server.py` | the page + JSON API, request guards, presence of open pages |
 | `devices.py` | Samsung TV (REST `:8001`, WebSocket `:8002`), Cast soundbar (`:8009`), identity checks, moving devices |
 | `discovery.py` | which networks to scan, port scan, identification by MAC/UUID, ARP, address book |
 | `catalog.py` | allowed keys, the app catalog (`apps.json`, checked against its schema at load) |
 | `wol.py` | Wake-on-LAN |
-| `icon.py` | the shortcut icon, drawn in code |
+| `icon.py` | the shortcut icon (`.ico`, `.png`, `.icns`), drawn in code |
 
 ## Setup wizard
 
@@ -86,7 +87,13 @@ text first and replaces the file in one step.
 Tests run with their own temporary directories (`tests/conftest.py`) and never touch the real ones.
 
 The desktop shortcut runs `pythonw -m tvpult app` next to the interpreter tvpult runs in — windowless, and the
-same for a source checkout and for `uv tool install`.
+same for a source checkout and for `uv tool install`. On Linux it is a `.desktop` file (`Terminal=false`, running
+that interpreter itself) in `$XDG_DATA_HOME/applications` and, when there is one, in the desktop folder from
+`user-dirs.dirs`; the icon is a PNG in the data folder. On macOS it is `~/Applications/<name>.app`: an
+`Info.plist` with `LSUIElement` (a server, no Dock icon of its own), a `/bin/sh` launcher that `exec`s the
+interpreter, and the icon as `.icns` (one PNG inside). All three icons are drawn by `icon.py`. The app window is
+Edge or Chrome on Windows, and Chrome, Chromium, Edge or Brave on Linux (`PATH`) and macOS (`/Applications`,
+`~/Applications`); without one the remote opens as an ordinary browser tab.
 
 ## Samsung specifics learnt the hard way
 
