@@ -75,6 +75,14 @@ dictionaries have it. Discovery's reasons for not trusting a TV (`note`) have co
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:
 config `devices.toml` in the config dir, data (pairing tokens, `addresses.json`, `tvpult.log`, the shortcut icon)
 in the data dir — both `%LOCALAPPDATA%\tvpult` on Windows. A missing config is a first run, not an error.
+
+`devices.toml` is safe to edit by hand, so it is checked when read (`parse_config`): sections are tables, device
+ids are `[a-z0-9_-]{1,32}` (they become page addresses and the `token-<id>.txt` file name), `host` is an IPv4
+address of a private network (never a name), MACs and the Cast UUID parse, lists are lists. A mistake is one
+`ConfigError` naming the place (`[tv.living] host: "tv.lan" is not …`), in both languages. The command line prints
+it with the file path; `app` mode (the shortcut, no console) starts anyway and the page shows the mistake and the
+file instead of the remote — nothing is written to the file then. Every write (wizard, settings) checks the new
+text first and replaces the file in one step.
 Tests run with their own temporary directories (`tests/conftest.py`) and never touch the real ones.
 
 The desktop shortcut runs `pythonw -m tvpult app` next to the interpreter tvpult runs in — windowless, and the
@@ -130,7 +138,10 @@ A TV's MAC in its own API answer is just a claim — any device on the LAN could
 pairing token and everything typed into the remote (including passwords). So the claim must match the MAC
 in the laptop's ARP table for that address (network layer), both during discovery and before every command.
 No match or no entry → the device is not used; the token is never sent there. A cabled TV shows its Ethernet
-MAC in ARP: configure it as `lan_mac`. Residual risk: ARP spoofing on the home network — an attack on the
+MAC in ARP: configure it as `lan_mac`. The table is read with `arp -a` on Windows and from `/proc/net/arp`,
+`ip neigh` or `arp -an` elsewhere (macOS writes octets with one digit, `8c:79:f5:a:1b:2c`; many Linux systems have
+no `arp`); keyed by address, since a device that moved keeps its old entry for a while. If no source works, the
+log and the wizard say so instead of "no ARP entry". Residual risk: ARP spoofing on the home network — an attack on the
 whole network, which intercepts other traffic too. TLS pinning of the TV's `:8002` certificate would need
 changes in samsungtvws and is not done yet.
 
