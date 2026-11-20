@@ -1,7 +1,7 @@
 """Talking to the actual devices: Samsung TVs (REST + WebSocket) and a Cast soundbar.
 
 Each device has a current address (`host`) that starts from devices.toml, is overridden by the
-address book (.data/addresses.json) and is changed by discovery when the device moves. Before a
+address book (addresses.json in the data folder) and is changed by discovery when the device moves. Before a
 device is used, its identity is checked (TV: Wi-Fi MAC; soundbar: Cast UUID), so commands never go
 to whatever else happens to answer at an old address.
 """
