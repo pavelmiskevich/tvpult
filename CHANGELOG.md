@@ -48,6 +48,10 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   details; at most 20 keys per request; `true`/`false` are no longer taken as a volume level.
 
 ### Added
+- `tvpult shortcut` on Linux and macOS (#35): on Linux a menu entry (`.desktop`, plus one on the desktop if there
+  is a desktop folder), on macOS an app in `~/Applications`; both start the remote without a terminal. The remote
+  opens as its own window with Chrome, Chromium, Edge or Brave on these systems too. Before, the command failed
+  there with a message about `pythonw`.
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
   line show it in their language. The setup wizard's reasons for not trusting a TV are translated as well.

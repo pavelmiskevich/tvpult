@@ -174,18 +174,45 @@ def _running_with_lan(port: int) -> bool:
         return False
 
 
-def _browser() -> str | None:
-    """Edge or Chrome, to open the remote as its own app window."""
-    candidates = [
-        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
-        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe",
-        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Google/Chrome/Application/chrome.exe",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
-    ]
+_MAC_BROWSERS = [
+    "Google Chrome.app/Contents/MacOS/Google Chrome",
+    "Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "Chromium.app/Contents/MacOS/Chromium",
+    "Brave Browser.app/Contents/MacOS/Brave Browser",
+]
+_LINUX_BROWSERS = [
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "microsoft-edge",
+    "microsoft-edge-stable",
+    "brave-browser",
+]
+
+
+def _browser(platform: str | None = None) -> str | None:
+    """A Chromium-based browser (Edge, Chrome, Chromium), to open the remote as its own app window."""
+    platform = platform or sys.platform
+    if platform == "win32":
+        candidates = [
+            Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+            / "Microsoft/Edge/Application/msedge.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Microsoft/Edge/Application/msedge.exe",
+            Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+        ]
+        names = ["msedge", "chrome"]
+    elif platform == "darwin":
+        roots = (Path("/Applications"), Path.home() / "Applications")
+        candidates = [root / app for root in roots for app in _MAC_BROWSERS]
+        names = []
+    else:
+        candidates, names = [], _LINUX_BROWSERS
     for c in candidates:
         if c.is_file():
             return str(c)
-    return shutil.which("msedge") or shutil.which("chrome")
+    return next((found for name in names if (found := shutil.which(name))), None)
 
 
 def _open_remote(url: str) -> None:
@@ -198,12 +225,15 @@ def _open_remote(url: str) -> None:
         webbrowser.open(url)
 
 
-def shortcut_target(executable: str | None = None) -> tuple[str, str]:
-    """What the desktop shortcut runs: the windowless Python of *this* environment with `-m tvpult app`.
+def shortcut_target(executable: str | None = None, platform: str | None = None) -> tuple[str, str]:
+    """What the shortcut runs: the Python of *this* environment with `-m tvpult app`.
 
     Works the same for a source checkout (`uv run`) and an installed tool (`uv tool install`), and
-    doesn't depend on where the code lives.
+    doesn't depend on where the code lives. On Windows it is the windowless `pythonw` next to it; elsewhere
+    the shortcut itself says "no terminal".
     """
+    if (platform or sys.platform) != "win32":
+        return executable or sys.executable, "-m tvpult app"
     exe = Path(executable or sys.executable)
     for name in ("pythonw.exe", "pythonw"):
         candidate = exe.with_name(name)
@@ -212,18 +242,35 @@ def shortcut_target(executable: str | None = None) -> tuple[str, str]:
     raise DeviceError(code="no_pythonw", exe=exe)
 
 
-def _make_shortcut(lan: bool = False) -> str:
-    """Create the desktop shortcut ("TV Remote" / «Пульт ТВ», by the system language).
+def _make_shortcut(lan: bool = False, platform: str | None = None) -> list[str]:
+    """Create the shortcut ("TV Remote" / «Пульт ТВ», by the system language); returns where it went.
 
-    It starts the remote in its own window and stops when that is closed.
+    Windows: on the desktop. Linux: in the applications menu, and on the desktop if there is one.
+    macOS: an app in ~/Applications. It starts the remote in its own window and stops when that is closed.
 
     lan: the shortcut also opens the remote to phones on the home network (PIN sign-in).
     """
+    from . import shortcuts
     from .icon import write_icon
 
-    target, arguments = shortcut_target()
+    platform = platform or sys.platform
+    target, arguments = shortcut_target(platform=platform)
     if lan:
         arguments += " --lan"
+    try:
+        if platform == "darwin":
+            app = shortcuts.make_mac_app(
+                target, arguments.split(), shortcut_name(), _version(), paths.data_dir(), Path.home() / "Applications"
+            )
+            return [str(app)]
+        if platform != "win32":
+            apps, desktop = shortcuts.linux_dirs()
+            made = shortcuts.make_linux_shortcut(
+                target, arguments.split(), shortcut_name(), t("shortcut.description"), paths.data_dir(), apps, desktop
+            )
+            return [str(p) for p in made]
+    except OSError as e:
+        raise DeviceError(code="shortcut", detail=str(e)) from e
     icon = paths.data_dir() / "tvpult.ico"
     write_icon(icon)
     script = shortcut_script(target, arguments, paths.data_dir(), icon)
@@ -237,7 +284,7 @@ def _make_shortcut(lan: bool = False) -> str:
     if out.returncode != 0 or not Path(path[0]).is_file():
         err = out.stderr.decode("utf-8", "replace").strip() or out.stdout.decode("utf-8", "replace").strip()
         raise DeviceError(code="shortcut", detail=err) if err else DeviceError(code="powershell_silent")
-    return path[0]
+    return [path[0]]
 
 
 def _ps_quote(value: object) -> str:
@@ -347,7 +394,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.cmd == "shortcut":
         try:
-            print(t("cli.shortcut_made"), _make_shortcut(lan=a.lan))
+            for path in _make_shortcut(lan=a.lan):
+                print(t("cli.shortcut_made"), path)
+            if sys.platform == "darwin":
+                print(t("cli.shortcut_mac_hint"))
+            elif sys.platform != "win32":
+                print(t("cli.shortcut_linux_hint"))
             return 0
         except DeviceError as e:
             print(t("cli.error", error=localized(e)), file=sys.stderr)
