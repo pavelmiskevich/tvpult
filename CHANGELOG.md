@@ -19,6 +19,10 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   requests pile up); the app on screen is asked about the last one seen first, the rest every 15 s at once;
   the app list is refreshed in the background; the ARP check runs once a minute; the page waits for one poll
   before sending the next.
+- A TV that is simply off no longer makes tvpult scan the networks every minute while the page is open (#34):
+  the background search backs off per device (1 → 2 → 5 → 15 minutes), starts over when the device answers, a
+  page opens, a button is pressed for it or the laptop moved to another network, and skips a TV switched off
+  from the remote.
 
 ### Security
 - PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from
