@@ -5,6 +5,27 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Fixed
+- The ARP check works on macOS and on Linux without `net-tools` (#28): MACs with one-digit octets
+  (`8c:79:f5:a:1b:2c`) are understood, Linux reads `/proc/net/arp` or `ip neigh` first, and when no source of the
+  table works the log and the setup wizard say so. A TV that got a new address is found at once even while its
+  old ARP entry is still there (#29).
+- A mistake in `devices.toml` no longer ends in a traceback — or, from the desktop shortcut, in nothing at all
+  (#30). The file is checked when read; the message names the section and the key (`[tv.living] host: …`), in
+  English and Russian. The command line prints it with the file path; the shortcut opens the remote, which shows
+  the mistake and the file. A device id may only have `a-z`, `0-9`, `-` and `_`; `host` must be an IPv4 address of
+  the home network. The setup wizard writes the file in one step, like the settings page.
+
+### Security
+- PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from
+  all addresses together pause sign-in for everyone until **New PIN** is pressed on the computer, whose page says
+  so and counts the wrong PINs. Before, a device using many addresses could make ~180,000 guesses a day, and
+  replacing the PIN after 30 didn't slow it down. Old failures age out, the right PIN clears them, empty
+  per-address entries and expired sessions are dropped.
+- The HTTP server is harder to misuse (#32): no page may frame the remote (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'` — a site could otherwise make you click it); the page gets a strict
+  Content-Security-Policy with a fresh nonce for its one script; a client that stays silent for 10 seconds is
+  dropped instead of holding a thread; an unexpected error answers a fixed text (`internal`) and logs the
+  details; at most 20 keys per request; `true`/`false` are no longer taken as a volume level.
 - Far fewer requests to the TVs while the remote is open (#33): one status per device every 2.5 s at most,
   shared by every open page (callers arriving meanwhile wait for the same answer, so a slow TV can't make
   requests pile up); the app on screen is asked about the last one seen first, the rest every 15 s at once;

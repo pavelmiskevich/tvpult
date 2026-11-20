@@ -75,6 +75,14 @@ dictionaries have it. Discovery's reasons for not trusting a TV (`note`) have co
 Never next to the code (installed, it sits in site-packages). `platformdirs` user directories:
 config `devices.toml` in the config dir, data (pairing tokens, `addresses.json`, `tvpult.log`, the shortcut icon)
 in the data dir — both `%LOCALAPPDATA%\tvpult` on Windows. A missing config is a first run, not an error.
+
+`devices.toml` is safe to edit by hand, so it is checked when read (`parse_config`): sections are tables, device
+ids are `[a-z0-9_-]{1,32}` (they become page addresses and the `token-<id>.txt` file name), `host` is an IPv4
+address of a private network (never a name), MACs and the Cast UUID parse, lists are lists. A mistake is one
+`ConfigError` naming the place (`[tv.living] host: "tv.lan" is not …`), in both languages. The command line prints
+it with the file path; `app` mode (the shortcut, no console) starts anyway and the page shows the mistake and the
+file instead of the remote — nothing is written to the file then. Every write (wizard, settings) checks the new
+text first and replaces the file in one step.
 Tests run with their own temporary directories (`tests/conftest.py`) and never touch the real ones.
 
 The desktop shortcut runs `pythonw -m tvpult app` next to the interpreter tvpult runs in — windowless, and the
@@ -138,7 +146,10 @@ A TV's MAC in its own API answer is just a claim — any device on the LAN could
 pairing token and everything typed into the remote (including passwords). So the claim must match the MAC
 in the laptop's ARP table for that address (network layer), both during discovery and before every command.
 No match or no entry → the device is not used; the token is never sent there. A cabled TV shows its Ethernet
-MAC in ARP: configure it as `lan_mac`. Residual risk: ARP spoofing on the home network — an attack on the
+MAC in ARP: configure it as `lan_mac`. The table is read with `arp -a` on Windows and from `/proc/net/arp`,
+`ip neigh` or `arp -an` elsewhere (macOS writes octets with one digit, `8c:79:f5:a:1b:2c`; many Linux systems have
+no `arp`); keyed by address, since a device that moved keeps its old entry for a while. If no source works, the
+log and the wizard say so instead of "no ARP entry". Residual risk: ARP spoofing on the home network — an attack on the
 whole network, which intercepts other traffic too. TLS pinning of the TV's `:8002` certificate would need
 changes in samsungtvws and is not done yet.
 
@@ -150,10 +161,17 @@ changes in samsungtvws and is not done yet.
   served because it holds no secrets). A phone signs in with a 6-digit PIN shown only on the computer
   (`/api/lan` answers only the local listener); it gets a random 256-bit token in an HttpOnly, SameSite=Strict
   cookie for 30 days; only SHA-256 hashes are stored (`sessions.json` in the data dir); sessions are revocable.
-  5 wrong PINs lock an address for 10 minutes; 30 in total replace the PIN. Comparisons are constant-time.
+  5 wrong PINs lock an address for 10 minutes; 20 within an hour from all addresses together pause sign-in until
+  "New PIN" on the computer (a device on the Wi-Fi can use many addresses; replacing the PIN wouldn't slow it
+  down). Old failures age out, the right PIN clears them. Comparisons are constant-time.
   The LAN is plain HTTP — see SECURITY.md for what that means.
 - `Host` must be one of ours (DNS rebinding), every POST needs `X-Tvpult: 1` (a cross-site page can't add it
   without a CORS preflight, which is never approved), a foreign `Origin` is refused.
+- Nothing may frame the remote: every answer has `X-Frame-Options: DENY` and `frame-ancestors 'none'` (clicks
+  in a hidden frame would come from our own page and pass the checks above). The page's policy allows only what
+  it uses — inline styles, `data:` images, its one script by a per-response nonce, requests to itself.
+- A connection silent for 10 seconds is dropped (a promised body that never comes would hold a thread); an
+  unexpected error answers `internal` and the details go to the log; at most 20 keys per request.
 - Only ordinary remote keys are allowed; service-menu keys (`KEY_FACTORY`, …) are not.
 
 ## Shortcut mode
