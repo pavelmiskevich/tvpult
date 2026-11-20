@@ -47,8 +47,11 @@ def _windows_ui_language() -> int | None:
         return None
 
 
-def detect(env: Mapping[str, str] = os.environ, platform: str = sys.platform,
-           ui_language: Callable[[], int | None] = _windows_ui_language) -> str:
+def detect(
+    env: Mapping[str, str] = os.environ,
+    platform: str = sys.platform,
+    ui_language: Callable[[], int | None] = _windows_ui_language,
+) -> str:
     """The language for the command line: TVPULT_LANG, else the system's (Russian or English, English otherwise)."""
     forced = _pick(env.get("TVPULT_LANG"))
     if forced:
@@ -92,5 +95,7 @@ def t(key: str, **values: object) -> str:
 def page_strings() -> dict[str, dict[str, str]]:
     """Both dictionaries, for embedding in the page: its own keys (without the "page." prefix) and the error
     texts (as "err.<code>")."""
-    return {lang_: {k.removeprefix("page."): v for k, v in strings(lang_).items() if k.startswith(("page.", "err."))}
-            for lang_ in LANGS}
+    return {
+        lang_: {k.removeprefix("page."): v for k, v in strings(lang_).items() if k.startswith(("page.", "err."))}
+        for lang_ in LANGS
+    }

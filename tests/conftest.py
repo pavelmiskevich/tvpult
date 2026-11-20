@@ -11,6 +11,7 @@ def no_real_network(monkeypatch):
 
     (A test that reaches a real TV could even pop up its "Allow?" prompt.)
     """
+
     def boom(*a, **k):
         raise AssertionError("a test tried to use the real network")
 

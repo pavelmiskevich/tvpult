@@ -51,39 +51,46 @@ def _with(change):
     return raw
 
 
-@pytest.mark.parametrize("change", [
-    lambda r: r.update(schema=2),
-    lambda r: r.update(extra=1),
-    lambda r: r.update(apps={}),
-    lambda r: r["apps"].update({"Bad Alias": r["apps"]["youtube"]}),
-    lambda r: r["apps"]["youtube"].pop("regions"),
-    lambda r: r["apps"]["youtube"].update(colour="red"),
-    lambda r: r["apps"]["youtube"]["names"].pop("en"),
-    lambda r: r["apps"]["youtube"]["names"].update(en=" "),
-    lambda r: r["apps"]["youtube"]["names"].update(de="YouTube"),
-    lambda r: r["apps"]["youtube"]["names"].update(ru="x" * 41),
-    lambda r: r["apps"]["youtube"].update(regions=[]),
-    lambda r: r["apps"]["youtube"].update(regions=["ru"]),
-    lambda r: r["apps"]["youtube"].update(regions=["*", "RU"]),
-    lambda r: r["apps"]["youtube"].update(regions=["RU", "RU"]),
-    lambda r: r["apps"]["youtube"].update(ids=[]),
-    lambda r: r["apps"]["youtube"].update(ids=["111299001912"]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "bad id"}]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "111299001912", "note": "x"}]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [2022, 2017]}]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [22]}]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [True]}]),
-    lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": "2022"}]),
-    lambda r: r["apps"]["netflix"]["ids"].append({"id": "111299001912"}),  # the same id under two apps
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda r: r.update(schema=2),
+        lambda r: r.update(extra=1),
+        lambda r: r.update(apps={}),
+        lambda r: r["apps"].update({"Bad Alias": r["apps"]["youtube"]}),
+        lambda r: r["apps"]["youtube"].pop("regions"),
+        lambda r: r["apps"]["youtube"].update(colour="red"),
+        lambda r: r["apps"]["youtube"]["names"].pop("en"),
+        lambda r: r["apps"]["youtube"]["names"].update(en=" "),
+        lambda r: r["apps"]["youtube"]["names"].update(de="YouTube"),
+        lambda r: r["apps"]["youtube"]["names"].update(ru="x" * 41),
+        lambda r: r["apps"]["youtube"].update(regions=[]),
+        lambda r: r["apps"]["youtube"].update(regions=["ru"]),
+        lambda r: r["apps"]["youtube"].update(regions=["*", "RU"]),
+        lambda r: r["apps"]["youtube"].update(regions=["RU", "RU"]),
+        lambda r: r["apps"]["youtube"].update(ids=[]),
+        lambda r: r["apps"]["youtube"].update(ids=["111299001912"]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "bad id"}]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "111299001912", "note": "x"}]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [2022, 2017]}]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [22]}]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": [True]}]),
+        lambda r: r["apps"]["youtube"].update(ids=[{"id": "111", "seen": "2022"}]),
+        lambda r: r["apps"]["netflix"]["ids"].append({"id": "111299001912"}),  # the same id under two apps
+    ],
+)
 def test_schema_violations_are_refused(change):
     with pytest.raises(CatalogError, match="apps.json"):
         parse_catalog(_with(change))
 
 
 def test_a_minimal_valid_entry():
-    apps = parse_catalog({"schema": 1, "apps": {"my.app": {"names": {"en": "Mine"}, "regions": ["DE", "AT"],
-                                                           "ids": [{"id": "3201234567890"}]}}})
+    apps = parse_catalog(
+        {
+            "schema": 1,
+            "apps": {"my.app": {"names": {"en": "Mine"}, "regions": ["DE", "AT"], "ids": [{"id": "3201234567890"}]}},
+        }
+    )
     assert apps["my.app"].name("ru") == "Mine"  # no Russian name: English
     assert apps["my.app"].regions == ("DE", "AT") and apps["my.app"].ids[0].seen == ()
 
@@ -126,8 +133,8 @@ def test_the_page_gets_the_app_names():
     from tvpult.server import _page
 
     html = _page().decode("utf-8")
-    script = html[html.index("const APPS = "):]
-    names = json.loads(script[len("const APPS = "):script.index(";")])
+    script = html[html.index("const APPS = ") :]
+    names = json.loads(script[len("const APPS = ") : script.index(";")])
     assert names == app_names() and names["kinopoisk"] == {"en": "Kinopoisk", "ru": "Кинопоиск"}
     assert names["netflix"]["ru"] == "Netflix"  # no separate Russian name: the English one
 
