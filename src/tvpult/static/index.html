@@ -782,7 +782,20 @@ function render() {
   d.kind === "tv" ? renderTv(d) : renderBar(d);
 }
 
+// One status request at a time: if the computer or a TV answers slowly, polls don't pile up; a refresh asked
+// for meanwhile (after a button) runs once the current one is back.
+let refreshing = false, refreshAgain = false;
 async function refresh() {
+  if (refreshing) { refreshAgain = true; return; }
+  refreshing = true;
+  try { await refreshNow(); }
+  finally {
+    refreshing = false;
+    if (refreshAgain) { refreshAgain = false; refresh(); }
+  }
+}
+
+async function refreshNow() {
   try {
     const s = await api("/api/status");
     state.devices = s.devices; state.quick = s.quick || []; state.cfgError = s.config_error || null;

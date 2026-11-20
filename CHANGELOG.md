@@ -14,6 +14,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   English and Russian. The command line prints it with the file path; the shortcut opens the remote, which shows
   the mistake and the file. A device id may only have `a-z`, `0-9`, `-` and `_`; `host` must be an IPv4 address of
   the home network. The setup wizard writes the file in one step, like the settings page.
+- Far fewer requests to the TVs while the remote is open (#33): one status per device every 2.5 s at most,
+  shared by every open page (callers arriving meanwhile wait for the same answer, so a slow TV can't make
+  requests pile up); the app on screen is asked about the last one seen first, the rest every 15 s at once;
+  the app list is refreshed in the background; the ARP check runs once a minute; the page waits for one poll
+  before sending the next.
 
 ### Security
 - PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from

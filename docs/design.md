@@ -108,6 +108,14 @@ same for a source checkout and for `uv tool install`.
 - **"Allow?" prompts**: the TV may ask on *every new connection* if its "Access Notification" setting is
   "Always". tvpult keeps one connection open in the server and one-shot commands don't open one at all.
 - The TV reports the access point's MAC as `ssid`, not the network name.
+- **What's on screen costs requests**: only `applications/<id>` → `visible` tells, one app at a time. So the app
+  last seen (or last launched) is asked first and alone; the others only every 15 s, all at once with a short
+  timeout (live TV and HDMI show none of them). The app list itself is refreshed every 10 minutes in the
+  background; a status keeps the old list meanwhile.
+- **One status per device, shared**: each open page asks every 5 s, but a device is asked at most once per
+  2.5 s; callers arriving meanwhile wait for that answer (a slow TV can't make requests pile up), and the page
+  never sends a new poll before the last one is back. An action or a settings change asks again at once. The ARP
+  check of the TV's identity runs once a minute, not with every status.
 
 ## Finding devices
 

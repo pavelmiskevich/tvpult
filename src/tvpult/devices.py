@@ -33,6 +33,9 @@ log = logging.getLogger(__name__)
 REMOTE_NAME = "tvpult"
 APP_CACHE_SECONDS = 600
 IDENTITY_CACHE_SECONDS = 60
+STATUS_SECONDS = 2.5  # one status per device this long, shared by every open page
+APP_SCAN_SECONDS = 15  # with nothing (or something unknown) on screen, look at every app this often
+APP_CHECK_TIMEOUT = 1.5
 RESCAN_SECONDS = 60
 SEARCH_SECONDS = 10  # a search asked for by hand (settings page)
 
@@ -89,6 +92,9 @@ class SamsungTv:
         self._ws = None
         self._apps: list[dict[str, str]] | None = None
         self._apps_at = 0.0
+        self._apps_refreshing = threading.Lock()  # held while the list is refreshed in the background
+        self._last_app: dict[str, str] | None = None  # the app last seen on screen: asked first
+        self._scan_at = 0.0  # when every app was last asked
         self._identity = _Identity()
         self._arp_fn = discovery.read_arp
 
@@ -104,6 +110,7 @@ class SamsungTv:
             self._ws = None
             self.host = host
             self._apps, self._apps_at = None, 0.0
+            self._last_app, self._scan_at = None, 0.0
             self._identity.reset()
 
     @property
@@ -134,6 +141,8 @@ class SamsungTv:
             log.warning("%s: %s is a different device (MAC %s)", self.cfg.id, self.host, dev.get("wifiMac"))
             self._identity.wrong(self.host)
             return False
+        if self._identity.fresh(self.host):  # the ARP table agreed less than a minute ago
+            return True
         # The claim is the device's own answer; the ARP table must agree before the pairing token or
         # any keys/text go there (a LAN device could otherwise pose as our TV).
         seen = discovery.arp_mac(self.host, self._arp_fn)
@@ -156,8 +165,22 @@ class SamsungTv:
             return False
 
     def installed_apps(self, refresh: bool = False) -> list[dict[str, str]]:
-        if not refresh and self._apps is not None and time.time() - self._apps_at < APP_CACHE_SECONDS:
-            return self._apps
+        """The catalog apps this TV has. Asked once; later refreshed in the background (the old list is
+        returned meanwhile), so a status request never waits for every catalog id. refresh=True: ask now."""
+        if refresh or self._apps is None:
+            return self._probe_apps()
+        if time.time() - self._apps_at >= APP_CACHE_SECONDS and self._apps_refreshing.acquire(blocking=False):
+            def run() -> None:
+                try:
+                    self._probe_apps()
+                except Exception:  # a background refresh must never take anything down
+                    log.debug("%s: app list refresh failed", self.cfg.id, exc_info=True)
+                finally:
+                    self._apps_refreshing.release()
+            threading.Thread(target=run, daemon=True, name=f"apps-{self.cfg.id}").start()
+        return self._apps
+
+    def _probe_apps(self) -> list[dict[str, str]]:
         found = []
         for alias, ids in app_catalog(self._extra_apps, self.year).items():  # ids seen on this year first
             for app_id in ids:
@@ -201,15 +224,31 @@ class SamsungTv:
             raise DeviceError(code="device_failed", name=self.cfg.name, detail=result["error"])
         return [{"id": str(a.get("appId")), "name": str(a.get("name"))} for a in result.get("apps") or []]
 
+    def _visible(self, app: dict[str, str]) -> bool:
+        try:
+            st = self._rest(f"applications/{app['id']}", timeout=APP_CHECK_TIMEOUT)
+        except requests.RequestException:
+            return False
+        return bool(st and st.get("visible"))
+
     def current_app(self) -> str | None:
-        for app in self.installed_apps():
-            try:
-                st = self._rest(f"applications/{app['id']}")
-            except requests.RequestException:
-                continue
-            if st and st.get("visible"):
-                return app["name"]
-        return None
+        """The app on screen. The last one seen is asked first (one request while it stays); the others only
+        every APP_SCAN_SECONDS and all at once — live TV or HDMI shows none of them, and asking each one by one
+        every few seconds was most of the traffic to the TV."""
+        if self._last_app is not None and self._visible(self._last_app):
+            return self._last_app["name"]
+        self._last_app = None
+        now = time.time()
+        if now - self._scan_at < APP_SCAN_SECONDS:
+            return None
+        self._scan_at = now
+        apps = self.installed_apps()
+        if not apps:
+            return None
+        with ThreadPoolExecutor(max_workers=min(8, len(apps))) as ex:
+            seen = list(ex.map(self._visible, apps))
+        self._last_app = next((a for a, on in zip(apps, seen, strict=True) if on), None)
+        return self._last_app["name"] if self._last_app else None
 
     def status(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -364,6 +403,9 @@ class SamsungTv:
         # Built-in apps (org.tizen.*) start as native apps, store apps as deep links.
         app_type = "DEEP_LINK" if app_id.isdigit() else "NATIVE_LAUNCH"
         self._with_remote(lambda tv: tv.run_app(app_id, app_type=app_type))
+        known = next((a for a in self._apps or [] if a["id"] == app_id), None)
+        if known:
+            self._last_app = known  # the next status asks this one first
         return app_id
 
     def wol_targets(self) -> tuple[str, ...]:
@@ -541,6 +583,16 @@ def _try_lock(lock: threading.Lock, busy: str):
 PAIRING_BUSY = "busy_pairing"  # error code
 
 
+class _Snapshot:
+    """One device's last status (Home._status_of)."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.result: dict[str, Any] | None = None
+        self.host = ""
+        self.at = 0.0
+
+
 class Home:
     """All devices from the config, at their current addresses."""
 
@@ -557,6 +609,9 @@ class Home:
         self._adapters = adapters_fn or discovery.adapter_addresses
         self._find_tvs = find_tvs_fn or discovery.find_tvs
         self._relocate_lock = threading.Lock()
+        self._snapshots: dict[str, _Snapshot] = {}
+        self._snapshots_lock = threading.Lock()
+        self._clock = time.monotonic
         self._keep_alive = keep_alive
         self._candidates: dict[str, dict[str, Any]] = {}
         self._setup_lock = threading.Lock()  # one pairing at a time (wizard and re-pairing)
@@ -648,6 +703,7 @@ class Home:
             changes["wake_on_lan"] = bool(wake_on_lan)
         dev.cfg = dataclasses.replace(dev.cfg, **changes)
         (self.config.tvs if kind == "tv" else self.config.soundbars)[dev_id] = dev.cfg
+        self.forget_status(dev_id)
         return {"id": dev_id, **changes}
 
     def remove_device(self, kind: str, dev_id: str) -> dict[str, Any]:
@@ -793,14 +849,37 @@ class Home:
         """rediscover: 'none' | 'background' (server) | 'wait' (CLI) — what to do about missing devices."""
         devs = self.devices()
         with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
-            result = list(ex.map(lambda d: d.status(), devs))
+            result = list(ex.map(self._status_of, devs))
         missing = any(not r.get("online") for r in result)
         if missing and rediscover == "background":
             self.relocate_in_background()
         elif missing and rediscover == "wait" and self.relocate():
+            self.forget_status()
             with ThreadPoolExecutor(max_workers=len(devs) or 1) as ex:
-                result = list(ex.map(lambda d: d.status(), devs))
+                result = list(ex.map(self._status_of, devs))
         return result
+
+    def _status_of(self, dev: SamsungTv | CastSoundbar) -> dict[str, Any]:
+        """The device's status, asked at most once per STATUS_SECONDS whatever the number of open pages.
+
+        Callers arriving while it is being asked wait for that answer instead of asking again, so a slow TV
+        can't make requests pile up.
+        """
+        with self._snapshots_lock:
+            snap = self._snapshots.setdefault(dev.cfg.id, _Snapshot())
+        with snap.lock:
+            now = self._clock()
+            if snap.result is None or snap.host != dev.host or now - snap.at >= STATUS_SECONDS:
+                snap.result, snap.host = dev.status(), dev.host
+                snap.at = self._clock()
+            return snap.result
+
+    def forget_status(self, dev_id: str | None = None) -> None:
+        """After an action or a change: the next status asks the device again."""
+        with self._snapshots_lock:
+            for key, snap in self._snapshots.items():
+                if dev_id is None or key == dev_id:
+                    snap.result = None
 
     def close(self) -> None:
         for d in self.devices():
