@@ -16,10 +16,11 @@ from pathlib import Path
 
 from . import config as paths
 from .catalog import ALLOWED_KEYS, KEY_ALIASES, UnknownKey
-from .config import init_config, load_config
+from .config import Config, ConfigError, init_config, load_config
 from .devices import DeviceError, Home
 from .errors import TvpultError, localized
 from .i18n import t
+from .tools import run_tool
 
 DEFAULT_PORT = 8765
 LOG_MAX_BYTES = 1_000_000
@@ -103,7 +104,7 @@ def _tailscale_self() -> tuple[str | None, str | None]:
     if not exe:
         return None, None
     try:
-        out = subprocess.run([exe, "status", "--json"], capture_output=True, text=True, timeout=10, check=True)
+        out = run_tool([exe, "status", "--json"], capture_output=True, text=True, timeout=10, check=True)
         me = json.loads(out.stdout).get("Self", {})
         ips = [ip for ip in me.get("TailscaleIPs", []) if "." in ip]
         name = (me.get("DNSName") or "").rstrip(".") or None
@@ -229,8 +230,8 @@ def _make_shortcut(lan: bool = False) -> str:
     # -EncodedCommand (UTF-16LE base64): the Cyrillic name survives; a plain -Command argument
     # turned it into '?', which Windows refuses in file names.
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-                         capture_output=True, timeout=30)
+    out = run_tool(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                   capture_output=True, timeout=30)
     path = out.stdout.decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
     if out.returncode != 0 or not Path(path[0]).is_file():
         err = out.stderr.decode("utf-8", "replace").strip() or out.stdout.decode("utf-8", "replace").strip()
@@ -363,12 +364,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _no_proxy_for_lan()
-    cfg = load_config()
-    if cfg.empty and a.cmd not in NO_DEVICES_NEEDED:
+    try:
+        cfg, broken = load_config(), None
+    except ConfigError as e:
+        print(t("cli.config_error", path=paths.config_file(), error=localized(e)), file=sys.stderr)
+        if a.cmd != "app":
+            return 1
+        # From the shortcut nobody sees the console: start anyway, the page shows what is wrong.
+        logging.error("%s: %s", paths.config_file(), e)
+        cfg, broken = Config(), e
+    if cfg.empty and broken is None and a.cmd not in NO_DEVICES_NEEDED:
         print(t("cli.not_configured", path=paths.config_file()), file=sys.stderr)
         return 1
     home = Home(cfg, keep_alive=a.cmd in ("serve", "app"),
                 book_path=Path(a.addresses) if a.addresses else None)
+    home.config_error = broken
     try:
         if a.cmd == "status":
             _print_status(home.status(rediscover="wait"))

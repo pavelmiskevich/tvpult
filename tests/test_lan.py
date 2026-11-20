@@ -12,7 +12,8 @@ from tvpult.auth import (
     COOKIE,
     LOCK_SECONDS,
     PER_ADDRESS_FAILS,
-    TOTAL_FAILS_BEFORE_NEW_PIN,
+    TOTAL_FAILS,
+    TOTAL_WINDOW,
     LanAuth,
     SignInError,
     cookie_token,
@@ -86,13 +87,57 @@ def test_too_many_wrong_pins_lock_that_address_only(auth, clock):
     assert auth.valid(auth.sign_in("192.168.1.66", "123456"))
 
 
-def test_too_many_wrong_pins_in_total_make_a_new_pin(auth):
-    for i in range(TOTAL_FAILS_BEFORE_NEW_PIN):
-        with pytest.raises(SignInError):
-            auth.sign_in(f"10.0.{i}.1", "000000")  # many addresses, a few tries each
-    assert auth.pin != "123456"
+def test_many_addresses_together_get_only_so_many_guesses(auth, clock):
+    # #31: a device on the Wi-Fi can use every address of a /24; the per-address lock alone allowed
+    # ~1,250 guesses per 10 minutes. Now at most TOTAL_FAILS are ever checked, whatever the addresses.
+    checked = 0
+    for minute in range(24 * 60):  # a day: 250 addresses, each trying as fast as its own lock allows
+        clock.t += 60
+        for host in range(1, 251):
+            try:
+                auth.sign_in(f"192.168.1.{host}", "000000")
+            except SignInError as e:
+                checked += e.code == "wrong_pin"
+                if e.code == "pin_paused":
+                    break  # (the rest of this minute's addresses would get the same answer)
+    assert checked == TOTAL_FAILS and auth.paused  # the whole day long
+    with pytest.raises(SignInError) as e:
+        auth.sign_in("192.168.1.30", "123456")  # even the right PIN: paused for everyone
+    assert e.value.status == 429 and e.value.code == "pin_paused"
+    clock.t += 10 * TOTAL_WINDOW  # time alone doesn't end the pause …
     with pytest.raises(SignInError):
-        auth.sign_in("10.9.9.9", "123456")
+        auth.sign_in("192.168.1.30", "123456")
+    pin = auth.renew_pin()  # … a new PIN on the computer does
+    assert not auth.paused and auth.wrong_pins() == 0
+    assert auth.valid(auth.sign_in("192.168.1.30", pin))
+
+
+def test_wrong_pins_age_out_and_the_right_pin_clears_them(auth, clock):
+    for i in range(TOTAL_FAILS - 1):
+        with pytest.raises(SignInError):
+            auth.sign_in(f"10.0.{i}.1", "000000")
+    assert auth.wrong_pins() == TOTAL_FAILS - 1 and not auth.paused
+    clock.t += TOTAL_WINDOW + 1
+    assert auth.wrong_pins() == 0  # honest typos over a long-running server don't add up
+    with pytest.raises(SignInError):
+        auth.sign_in("10.0.0.1", "000000")
+    auth.sign_in("10.0.0.2", "123456")
+    assert auth.wrong_pins() == 0
+
+
+def test_no_entry_is_kept_per_address_forever(auth, clock):
+    with pytest.raises(SignInError):
+        auth.sign_in("10.0.0.1", "000000")
+    auth.sign_in("10.0.0.2", "123456")
+    clock.t += LOCK_SECONDS + 1
+    auth.wrong_pins()
+    assert auth._fails == {}
+
+
+def test_expired_sessions_leave_the_list(auth, clock):
+    auth.sign_in("192.168.1.30", "123456")
+    clock.t += 31 * 86400
+    assert auth.sessions() == []
 
 
 def test_revoke_and_renew(auth):
@@ -214,6 +259,18 @@ def test_local_sees_pin_qr_and_sessions(local):
     sid = _call(base + "/api/lan")[1]["sessions"][0]["id"]
     assert _call(base + "/api/lan/revoke", {"id": sid}, X)[1] == {"revoked": True}
     assert _call(base + "/api/lan/pin", {}, X)[1]["pin"] == auth.pin
+
+
+def test_local_page_shows_wrong_pins_and_the_pause(local):
+    base, auth = local
+    assert _call(base + "/api/lan")[1]["wrong_pins"] == 0
+    for i in range(TOTAL_FAILS):
+        with pytest.raises(SignInError):
+            auth.sign_in(f"10.0.{i}.1", "000000")
+    info = _call(base + "/api/lan")[1]
+    assert info["paused"] and info["wrong_pins"] == TOTAL_FAILS
+    _call(base + "/api/lan/pin", {}, X)
+    assert not _call(base + "/api/lan")[1]["paused"]
 
 
 def test_local_without_lan_mode_reports_disabled():

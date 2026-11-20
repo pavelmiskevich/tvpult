@@ -5,8 +5,12 @@ Devices are recognised by what doesn't change:
   * a Cast soundbar by its Cast UUID (GET :8008/setup/eureka_info -> ssdp_udn) — Cast hides its MAC
     in that API — or, as a fallback, by its MAC in the laptop's ARP table.
 
-Only private /24 networks are ever scanned: the laptop's own network, the networks of the last known
-addresses, and any extra ones from devices.toml. Found addresses are kept in .data/addresses.json.
+Only private networks are ever scanned (their real mask, at most /22): the laptop's own network, the networks
+of the last known addresses, and any extra ones from devices.toml. Found addresses are kept in addresses.json
+in the data folder.
+
+The ARP table comes from `arp -a` on Windows; elsewhere from /proc/net/arp, `ip neigh` or `arp -an`, whichever
+works first (Linux distributions often ship without `arp`).
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +33,7 @@ from typing import Any
 import requests
 
 from .errors import TvpultError
+from .tools import run_tool
 
 log = logging.getLogger(__name__)
 
@@ -36,13 +42,20 @@ CAST_PORT = 8009
 CAST_HTTP_PORT = 8008
 MAX_SUBNETS = 4
 _PRIVATE = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
-_MAC_RE = re.compile(r"(?i)\b([0-9a-f]{2}(?:[-:][0-9a-f]{2}){5})\b")
+# Octets of one or two digits: macOS prints 8c:79:f5:a:1b:2c for 8c:79:f5:0a:1b:2c.
+_MAC_RE = re.compile(r"(?i)(?<![0-9a-f:-])([0-9a-f]{1,2}(?:[-:][0-9a-f]{1,2}){5})(?![0-9a-f:-])")
 _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 
 
 # --- identifiers ----------------------------------------------------------------
 def normalize_mac(mac: str | None) -> str:
-    """'02:00:00:00:55:01', '02-00-00-00-55-01', '020000005501' -> '020000005501'; anything else -> ''."""
+    """'02:00:00:00:55:01', '02-00-00-00-55-01', '020000005501' -> '020000005501'; anything else -> ''.
+
+    Octets written with one digit (macOS: '2:0:0:0:55:1') are padded.
+    """
+    octets = re.split(r"[-:]", (mac or "").strip())
+    if len(octets) == 6 and all(re.fullmatch(r"[0-9a-fA-F]{1,2}", o) for o in octets):
+        mac = "".join(o.zfill(2) for o in octets)
     hexes = re.sub(r"[^0-9a-fA-F]", "", mac or "").lower()
     if len(hexes) != 12 or hexes == "000000000000":
         return ""
@@ -229,7 +242,8 @@ def find_tvs(subnets: list[ipaddress.IPv4Network], *,
     hosts = [h for h, p in scan_fn(subnets, (TV_PORT,)) if p == TV_PORT]
     if not hosts:
         return []
-    arp_by_ip = {ip: mac for mac, ip in arp_fn().items()}
+    arp_by_ip = arp_fn()
+    no_arp = "tv_arp_unavailable" if getattr(arp_by_ip, "available", True) is False else "tv_no_arp"
     seen: list[TvSighting] = []
     for host in hosts:
         ident = identify_tv_fn(host)
@@ -239,7 +253,7 @@ def find_tvs(subnets: list[ipaddress.IPv4Network], *,
         confirmed = arp_mac == ident["mac"]
         code = ""
         if not confirmed:
-            code = "tv_cabled" if ident.get("wired") and arp_mac else "tv_no_arp" if not arp_mac else "tv_mac_differs"
+            code = "tv_cabled" if ident.get("wired") and arp_mac else no_arp if not arp_mac else "tv_mac_differs"
         seen.append(TvSighting(host, ident["mac"], ident["model"], ident["name"], ident.get("year"),
                                confirmed, str(TvpultError(code=code)) if code else "", code))
     return sorted(seen, key=lambda t: ipaddress.IPv4Address(t.host))
@@ -256,25 +270,66 @@ def identify_cast(host: str, http: requests.Session | None = None) -> str | None
     return normalize_uuid(data.get("ssdp_udn")) or None
 
 
-def parse_arp(text: str) -> dict[str, str]:
-    """MAC -> IP from `arp -a` output (Windows 'aa-bb-…' and Unix 'aa:bb:…' formats)."""
-    table: dict[str, str] = {}
+class ArpTable(dict[str, str]):
+    """IP -> MAC. `available` is False when no way of reading the table worked at all."""
+
+    available = True
+
+
+def parse_arp(text: str) -> ArpTable:
+    """IP -> MAC from any of: `arp -a` (Windows 'aa-bb-…', Linux and macOS 'aa:bb:…', macOS with one-digit
+    octets), `ip neigh`, /proc/net/arp.
+
+    One address has one MAC; one MAC may sit at several addresses for a while (a device that moved still
+    has its old entry), so the table is keyed by address.
+    """
+    table = ArpTable()
     for line in text.splitlines():
         ip_m, mac_m = _IP_RE.search(line), _MAC_RE.search(line)
         if not ip_m or not mac_m:
             continue
         mac = normalize_mac(mac_m.group(1))
         if mac and mac != "ffffffffffff" and not mac.startswith("01005e"):  # skip broadcast/multicast
-            table.setdefault(mac, ip_m.group(1))
+            table.setdefault(ip_m.group(1), mac)
     return table
 
 
-def read_arp() -> dict[str, str]:
-    try:
-        out = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10)
-        return parse_arp(out.stdout)
-    except (OSError, subprocess.SubprocessError):
-        return {}
+def _arp_sources() -> list[tuple[str, Callable[[], str]]]:
+    """Ways to read the ARP table on this system, best first."""
+    def run(*cmd: str) -> Callable[[], str]:
+        def read() -> str:
+            out = run_tool(list(cmd), capture_output=True, text=True, timeout=10)
+            if out.returncode != 0:
+                raise OSError(f"{cmd[0]} exited with {out.returncode}")
+            return out.stdout
+        return read
+
+    if sys.platform == "win32":
+        return [("arp -a", run("arp", "-a"))]
+    # Linux: the kernel's table needs no program; `arp` (net-tools) is often not installed any more.
+    # -n everywhere: no name lookups, which can take seconds per entry.
+    return [("/proc/net/arp", lambda: Path("/proc/net/arp").read_text(encoding="utf-8")),
+            ("ip neigh", run("ip", "neigh")),
+            ("arp -an", run("arp", "-an"))]
+
+
+_arp_warned = False
+
+
+def read_arp() -> ArpTable:
+    global _arp_warned
+    for name, read in _arp_sources():
+        try:
+            return parse_arp(read())
+        except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as e:
+            log.debug("ARP table: %s failed: %s", name, e)
+    if not _arp_warned:  # once: the search asks every minute
+        _arp_warned = True
+        log.warning("can't read the ARP table (%s) — no device can be confirmed",
+                    ", ".join(name for name, _ in _arp_sources()))
+    table = ArpTable()
+    table.available = False
+    return table
 
 
 def arp_mac(ip: str, arp_fn: Callable[[], dict[str, str]] = read_arp) -> str:
@@ -283,10 +338,7 @@ def arp_mac(ip: str, arp_fn: Callable[[], dict[str, str]] = read_arp) -> str:
     This comes from the network layer, not from the device's own answer, so a device on the LAN
     can't simply claim to be our TV by putting the TV's MAC into its HTTP reply.
     """
-    for mac, addr in arp_fn().items():
-        if addr == ip:
-            return mac
-    return ""
+    return arp_fn().get(ip, "")
 
 
 def mac_confirmed(ip: str, claimed_mac: str, arp_fn: Callable[[], dict[str, str]] = read_arp) -> bool:
@@ -347,8 +399,7 @@ def locate(wanted: Iterable[Wanted], subnets: list[ipaddress.IPv4Network], *,
     # The scan itself filled the ARP table. A device's own claim (MAC in its API answer, Cast UUID)
     # is accepted only when the ARP table confirms the MAC at that address — otherwise any device on
     # the LAN could pose as our TV and receive the pairing token and everything typed into it.
-    arp = arp_fn() if (tv_hosts or cast_hosts) else {}
-    arp_by_ip = {ip: mac for mac, ip in arp.items()}
+    arp_by_ip = arp_fn() if (tv_hosts or cast_hosts) else {}
     macs_by_id = {w.id: normalize_mac(w.mac) for w in wanted}
     arp_ok = {w.id: w.arp_macs() for w in wanted}
 
@@ -375,8 +426,9 @@ def locate(wanted: Iterable[Wanted], subnets: list[ipaddress.IPv4Network], *,
     # table alone, accepted only if that address really is a Cast device.
     for w in wanted:
         if w.kind == "cast" and w.id not in found and macs_by_id.get(w.id):
-            host = arp.get(macs_by_id[w.id])
-            if host and host in cast_hosts:
+            # every address the table holds for that MAC: a device that moved keeps its old entry a while
+            host = next((h for h in cast_hosts if arp_by_ip.get(h) == macs_by_id[w.id]), None)
+            if host:
                 found[w.id] = Found(host, "arp")
     return found
 
