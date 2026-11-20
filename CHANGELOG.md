@@ -14,12 +14,18 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   English and Russian. The command line prints it with the file path; the shortcut opens the remote, which shows
   the mistake and the file. A device id may only have `a-z`, `0-9`, `-` and `_`; `host` must be an IPv4 address of
   the home network. The setup wizard writes the file in one step, like the settings page.
+
 ### Security
 - PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from
   all addresses together pause sign-in for everyone until **New PIN** is pressed on the computer, whose page says
   so and counts the wrong PINs. Before, a device using many addresses could make ~180,000 guesses a day, and
   replacing the PIN after 30 didn't slow it down. Old failures age out, the right PIN clears them, empty
   per-address entries and expired sessions are dropped.
+- The HTTP server is harder to misuse (#32): no page may frame the remote (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'` — a site could otherwise make you click it); the page gets a strict
+  Content-Security-Policy with a fresh nonce for its one script; a client that stays silent for 10 seconds is
+  dropped instead of holding a thread; an unexpected error answers a fixed text (`internal`) and logs the
+  details; at most 20 keys per request; `true`/`false` are no longer taken as a volume level.
 
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters

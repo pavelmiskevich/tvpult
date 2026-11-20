@@ -159,6 +159,11 @@ changes in samsungtvws and is not done yet.
   The LAN is plain HTTP — see SECURITY.md for what that means.
 - `Host` must be one of ours (DNS rebinding), every POST needs `X-Tvpult: 1` (a cross-site page can't add it
   without a CORS preflight, which is never approved), a foreign `Origin` is refused.
+- Nothing may frame the remote: every answer has `X-Frame-Options: DENY` and `frame-ancestors 'none'` (clicks
+  in a hidden frame would come from our own page and pass the checks above). The page's policy allows only what
+  it uses — inline styles, `data:` images, its one script by a per-response nonce, requests to itself.
+- A connection silent for 10 seconds is dropped (a promised body that never comes would hold a thread); an
+  unexpected error answers `internal` and the details go to the log; at most 20 keys per request.
 - Only ordinary remote keys are allowed; service-menu keys (`KEY_FACTORY`, …) are not.
 
 ## Shortcut mode
