@@ -23,6 +23,9 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   the background search backs off per device (1 → 2 → 5 → 15 minutes), starts over when the device answers, a
   page opens, a button is pressed for it or the laptop moved to another network, and skips a TV switched off
   from the remote.
+- No console window flashes while the remote runs from the desktop shortcut (#36): `arp`, `tailscale` and
+  PowerShell are started with `CREATE_NO_WINDOW` (`tools.run_tool`). Started from `pythonw`, a console program
+  otherwise gets a visible console window of its own — once a minute per TV for the ARP check.
 
 ### Security
 - PIN sign-in (`--lan`) has an overall limit that actually stops guessing (#31): 20 wrong PINs within an hour from

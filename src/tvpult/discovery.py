@@ -33,6 +33,7 @@ from typing import Any
 import requests
 
 from .errors import TvpultError
+from .tools import run_tool
 
 log = logging.getLogger(__name__)
 
@@ -289,7 +290,7 @@ def _arp_sources() -> list[tuple[str, Callable[[], str]]]:
     """Ways to read the ARP table on this system, best first."""
     def run(*cmd: str) -> Callable[[], str]:
         def read() -> str:
-            out = subprocess.run(list(cmd), capture_output=True, text=True, timeout=10)
+            out = run_tool(list(cmd), capture_output=True, text=True, timeout=10)
             if out.returncode != 0:
                 raise OSError(f"{cmd[0]} exited with {out.returncode}")
             return out.stdout
