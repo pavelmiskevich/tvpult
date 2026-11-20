@@ -5,6 +5,10 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 ## [Unreleased]
 
 ### Fixed
+- The ARP check works on macOS and on Linux without `net-tools` (#28): MACs with one-digit octets
+  (`8c:79:f5:a:1b:2c`) are understood, Linux reads `/proc/net/arp` or `ip neigh` first, and when no source of the
+  table works the log and the setup wizard say so. A TV that got a new address is found at once even while its
+  old ARP entry is still there (#29).
 - A mistake in `devices.toml` no longer ends in a traceback — or, from the desktop shortcut, in nothing at all
   (#30). The file is checked when read; the message names the section and the key (`[tv.living] host: …`), in
   English and Russian. The command line prints it with the file path; the shortcut opens the remote, which shows

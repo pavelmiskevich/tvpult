@@ -138,7 +138,10 @@ A TV's MAC in its own API answer is just a claim — any device on the LAN could
 pairing token and everything typed into the remote (including passwords). So the claim must match the MAC
 in the laptop's ARP table for that address (network layer), both during discovery and before every command.
 No match or no entry → the device is not used; the token is never sent there. A cabled TV shows its Ethernet
-MAC in ARP: configure it as `lan_mac`. Residual risk: ARP spoofing on the home network — an attack on the
+MAC in ARP: configure it as `lan_mac`. The table is read with `arp -a` on Windows and from `/proc/net/arp`,
+`ip neigh` or `arp -an` elsewhere (macOS writes octets with one digit, `8c:79:f5:a:1b:2c`; many Linux systems have
+no `arp`); keyed by address, since a device that moved keeps its old entry for a while. If no source works, the
+log and the wizard say so instead of "no ARP entry". Residual risk: ARP spoofing on the home network — an attack on the
 whole network, which intercepts other traffic too. TLS pinning of the TV's `:8002` certificate would need
 changes in samsungtvws and is not done yet.
 
