@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import config as paths
 from .catalog import ALLOWED_KEYS, KEY_ALIASES, UnknownKey
-from .config import init_config, load_config
+from .config import Config, ConfigError, init_config, load_config
 from .devices import DeviceError, Home
 from .errors import TvpultError, localized
 from .i18n import t
@@ -348,12 +348,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _no_proxy_for_lan()
-    cfg = load_config()
-    if cfg.empty and a.cmd not in NO_DEVICES_NEEDED:
+    try:
+        cfg, broken = load_config(), None
+    except ConfigError as e:
+        print(t("cli.config_error", path=paths.config_file(), error=localized(e)), file=sys.stderr)
+        if a.cmd != "app":
+            return 1
+        # From the shortcut nobody sees the console: start anyway, the page shows what is wrong.
+        logging.error("%s: %s", paths.config_file(), e)
+        cfg, broken = Config(), e
+    if cfg.empty and broken is None and a.cmd not in NO_DEVICES_NEEDED:
         print(t("cli.not_configured", path=paths.config_file()), file=sys.stderr)
         return 1
     home = Home(cfg, keep_alive=a.cmd in ("serve", "app"),
                 book_path=Path(a.addresses) if a.addresses else None)
+    home.config_error = broken
     try:
         if a.cmd == "status":
             _print_status(home.status(rediscover="wait"))

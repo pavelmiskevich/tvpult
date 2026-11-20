@@ -71,7 +71,7 @@ def _find(tvs: dict[str, dict], arp: dict[str, str], extra_ports=()):
     return find_tvs([N("192.168.1.0/24")],
                     scan_fn=lambda subnets, p: ports,
                     identify_tv_fn=lambda h: tvs.get(h),
-                    arp_fn=lambda: {normalize_mac(m): ip for ip, m in arp.items()})
+                    arp_fn=lambda: {ip: normalize_mac(m) for ip, m in arp.items()})
 
 
 def _ident(mac, model="QE65", year=2022, wired=False, name="TV"):
