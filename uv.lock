@@ -614,11 +614,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ifaddr", specifier = ">=0.2.0" },
-    { name = "platformdirs", specifier = ">=4.14.5" },
-    { name = "pychromecast", specifier = ">=14.1.1" },
-    { name = "samsungtvws", specifier = ">=3.0" },
-    { name = "segno", specifier = ">=1.6.6" },
-    { name = "tomlkit", specifier = ">=0.15.2" },
+    { name = "platformdirs", specifier = ">=4.0" },
+    { name = "pychromecast", specifier = ">=14.0" },
+    { name = "samsungtvws", specifier = ">=3.0.2" },
+    { name = "segno", specifier = ">=1.5" },
+    { name = "tomlkit", specifier = ">=0.12" },
 ]
 
 [package.metadata.requires-dev]

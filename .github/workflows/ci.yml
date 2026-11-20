@@ -38,6 +38,20 @@ jobs:
       # Tests never touch the network (tests/conftest.py), so they are safe on shared runners.
       - run: uv run --frozen pytest -q
 
+  oldest:
+    name: Tests with the oldest allowed dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+      # The lower bounds in pyproject.toml are a promise: install exactly them and run the tests.
+      - run: |
+          uv venv .oldest
+          uv pip install --python .oldest --resolution lowest-direct -e . "pytest>=9.2.0"
+          .oldest/bin/python -m pytest -q
+
   package:
     name: Package builds and ships the remote page
     runs-on: ubuntu-latest
@@ -52,3 +66,12 @@ jobs:
           unzip -l dist/*.whl | grep -q "tvpult/locales/en.json"
           unzip -l dist/*.whl | grep -q "tvpult/locales/ru.json"
           unzip -l dist/*.whl | grep -q "tvpult/apps.json"
+      # The built wheel in a clean environment, not the source tree: catches a missing data file or dependency.
+      - name: The wheel installs and runs
+        run: |
+          uv venv /tmp/wheel-check
+          uv pip install --python /tmp/wheel-check dist/*.whl
+          cd /tmp
+          /tmp/wheel-check/bin/tvpult --version
+          /tmp/wheel-check/bin/tvpult catalog
+          /tmp/wheel-check/bin/tvpult keys

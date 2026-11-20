@@ -36,7 +36,10 @@ def isolated_paths(tmp_path):
 
 @pytest.fixture(autouse=True)
 def russian_by_default():
-    """The command line speaks the system language; tests fix it (Russian, as the older tests expect)."""
+    """The command line speaks the system language; tests fix it.
+
+    Russian, as the older tests expect; the command line tests that check wording run in English too.
+    """
     from tvpult import i18n
 
     i18n.use_lang("ru")

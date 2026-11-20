@@ -1,1 +1,1 @@
-"""Local control for home Samsung TVs and the JBL soundbar."""
+"""tvpult — a local remote for Samsung Smart TVs (Tizen) and Cast speakers on the home network."""

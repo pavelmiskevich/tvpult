@@ -1,4 +1,4 @@
-"""tvpult — command line for the home TVs and soundbar."""
+"""tvpult's command line: the remote page, the setup wizard, TV and soundbar commands, the desktop shortcut."""
 
 from __future__ import annotations
 
