@@ -332,7 +332,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             if auth is None or not lan_url:
                 return {"enabled": False}
             return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
-                    "sessions": auth.sessions()}
+                    "sessions": auth.sessions(), "paused": auth.paused, "wrong_pins": auth.wrong_pins()}
 
         def do_GET(self):
             if not self._guard():
