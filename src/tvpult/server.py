@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import secrets
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,7 @@ from urllib.parse import urlsplit
 
 from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey, app_names
-from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
+from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name, config_file
 from .devices import DeviceError, Home
 from .errors import TvpultError
 from .i18n import page_strings, t
@@ -31,6 +32,15 @@ log = logging.getLogger(__name__)
 
 _ROUTE = re.compile(r"^/api/(tv|bar)/([A-Za-z0-9_-]+)/([a-z]+)$")
 MAX_BODY = 16 * 1024
+MAX_KEYS = 20  # keys in one request: each holds the TV's channel for a moment
+REQUEST_TIMEOUT = 10  # seconds a connection may stay silent (a body promised and never sent holds a thread)
+
+# Nothing may put the remote in a frame (clickjacking: the clicks would come from our own page and pass every
+# check). The page gets a full policy: it loads nothing from anywhere, its one script carries a fresh nonce.
+NO_FRAMES = {"X-Frame-Options": "DENY"}
+API_CSP = "default-src 'none'; frame-ancestors 'none'"
+PAGE_CSP = ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; "
+            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 _DEV_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
@@ -51,8 +61,11 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     """Route one API call. Pure apart from the device calls, so it is easy to test."""
     if method == "GET" and path == "/api/status":
         quick = getattr(getattr(home, "config", None), "quick_apps", [])
-        return {"devices": home.status(rediscover="background"), "quick": quick,
-                "setup": bool(getattr(home, "setup_needed", False))}
+        out = {"devices": home.status(rediscover="background"), "quick": quick,
+               "setup": bool(getattr(home, "setup_needed", False))}
+        if (broken := getattr(home, "config_error", None)) is not None:  # app mode with a wrong devices.toml
+            out["config_error"] = {**broken.payload(), "file": str(config_file())}
+        return out
     if method != "POST":
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     if path == "/api/setup/scan":
@@ -78,6 +91,8 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     kind, dev_id, action = m.groups()
     if (soon := getattr(home, "search_soon", None)) is not None:
         soon(dev_id)  # someone wants this device: if it's missing, no backing off
+    if (forget := getattr(home, "forget_status", None)) is not None:
+        forget(dev_id)  # the page asks for the status right after an action: show its effect, not a snapshot
     try:
         return _act(home, kind, dev_id, action, body)
     except DeviceError as first:
@@ -138,6 +153,11 @@ def _found_elsewhere(home: Home, kind: str, dev_id: str, action: str) -> bool:
     return dev_id in relocate()
 
 
+def _number(value: object) -> bool:
+    """A whole number from JSON — not true/false, which Python counts as int."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) -> Any:
     """Run one action. DeviceError propagates (dispatch decides about retrying)."""
     try:
@@ -145,8 +165,10 @@ def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) 
             tv = home.tv(dev_id)
             if action == "key":
                 keys = body.get("keys") or ([body["key"]] if "key" in body else [])
-                if not keys or not all(isinstance(k, str) for k in keys):
+                if not isinstance(keys, list) or not keys or not all(isinstance(k, str) for k in keys):
                     raise ApiError(HTTPStatus.BAD_REQUEST, "keys_required")
+                if len(keys) > MAX_KEYS:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "too_many_keys", max=MAX_KEYS)
                 return {"sent": tv.send_keys(keys)}
             if action == "launch":
                 app = body.get("app")
@@ -166,9 +188,9 @@ def _act(home: Home, kind: str, dev_id: str, action: str, body: dict[str, Any]) 
         else:
             bar = home.bar(dev_id)
             if action == "volume":
-                if isinstance(body.get("level"), int):
+                if _number(body.get("level")):
                     return {"volume": bar.set_volume(body["level"])}
-                if isinstance(body.get("delta"), int):
+                if _number(body.get("delta")):
                     return {"volume": bar.change_volume(body["delta"])}
                 raise ApiError(HTTPStatus.BAD_REQUEST, "bad_volume")
             if action == "mute":
@@ -268,10 +290,14 @@ def _embed(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c").encode("utf-8")
 
 
-def _page() -> bytes:
-    """The page with both dictionaries and the app names embedded: works offline and before sign-in (PIN)."""
+def _page(nonce: str = "") -> bytes:
+    """The page with both dictionaries and the app names embedded: works offline and before sign-in (PIN).
+
+    nonce: the script's nonce for this response's Content-Security-Policy.
+    """
     page = resources.files("tvpult").joinpath("static/index.html").read_bytes()
-    return page.replace(I18N_SLOT, _embed(page_strings()), 1).replace(APPS_SLOT, _embed(app_names()), 1)
+    page = page.replace(I18N_SLOT, _embed(page_strings()), 1).replace(APPS_SLOT, _embed(app_names()), 1)
+    return page.replace(b"<script>", f'<script nonce="{nonce}">'.encode(), 1) if nonce else page
 
 
 def qr_data_uri(text: str) -> str:
@@ -291,6 +317,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tvpult"
+        timeout = REQUEST_TIMEOUT  # the socket's timeout: a silent client is dropped, not waited for
 
         def log_message(self, fmt, *args):  # every request (a status poll each 5 s) only at debug level
             log.debug("%s %s", self.address_string(), fmt % args)
@@ -302,7 +329,8 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            for name, value in (headers or {}).items():
+            headers = {**NO_FRAMES, "Content-Security-Policy": API_CSP, **(headers or {})}
+            for name, value in headers.items():
                 self.send_header(name, value)
             self.end_headers()
             self.wfile.write(payload)
@@ -333,14 +361,16 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             if auth is None or not lan_url:
                 return {"enabled": False}
             return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
-                    "sessions": auth.sessions()}
+                    "sessions": auth.sessions(), "paused": auth.paused, "wrong_pins": auth.wrong_pins()}
 
         def do_GET(self):
             if not self._guard():
                 return
             path = urlsplit(self.path).path
             if path in ("/", "/index.html"):  # the page holds no secrets: served to everyone allowed in
-                self._send(HTTPStatus.OK, _page(), "text/html; charset=utf-8")
+                nonce = secrets.token_urlsafe(16)
+                self._send(HTTPStatus.OK, _page(nonce), "text/html; charset=utf-8",
+                           {"Content-Security-Policy": PAGE_CSP.format(nonce=nonce)})
                 return
             if path == "/api/lan":  # the PIN and the sessions: this computer only
                 if role != "local":
@@ -363,7 +393,14 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 return
             # Read the body before any refusal, so the client gets the answer
             # instead of a reset connection.
-            raw = self.rfile.read(length)
+            try:
+                raw = self.rfile.read(length)
+            except OSError:  # TimeoutError included: a body promised and never sent
+                self.close_connection = True
+                return
+            if len(raw) < length:  # the client went away mid-body
+                self.close_connection = True
+                return
             if not self._guard():
                 return
             path = urlsplit(self.path).path
@@ -432,9 +469,9 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 self._json(HTTPStatus.OK, dispatch(home, method, path, body))
             except ApiError as e:
                 self._json(e.status, e.payload())
-            except Exception as e:  # keep the server alive, report the failure
+            except Exception:  # keep the server alive; the details go to the log, not to the caller
                 log.exception("unhandled error")
-                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+                self._err(HTTPStatus.INTERNAL_SERVER_ERROR, "internal")
 
     return Handler
 

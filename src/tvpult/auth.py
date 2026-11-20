@@ -5,8 +5,11 @@ there every API call needs a session: a phone enters a 6-digit PIN once (shown o
 and gets a random session token in an HttpOnly cookie. Only SHA-256 hashes of tokens are stored on disk,
 so the sessions file alone can't be used to sign in. Sessions can be revoked from the computer.
 
-Brute force: 5 wrong PINs from one address lock that address for 10 minutes; 30 wrong PINs in total
-replace the PIN with a new one (a guesser can't keep going from many addresses).
+Brute force: 5 wrong PINs from one address lock that address for 10 minutes. A device on the Wi-Fi isn't
+limited to one address, so there is an overall limit too: 20 wrong PINs from all addresses together within an
+hour pause sign-in for everyone until someone presses "New PIN" on the computer, whose page says why. So no
+more than 20 guesses are ever checked against one PIN (a 1 in 50,000 chance), however many addresses they
+come from.
 """
 
 from __future__ import annotations
@@ -30,7 +33,8 @@ COOKIE = "tvpult_session"
 SESSION_DAYS = 30
 PER_ADDRESS_FAILS = 5
 LOCK_SECONDS = 600
-TOTAL_FAILS_BEFORE_NEW_PIN = 30
+TOTAL_FAILS = 20  # wrong PINs from all addresses together …
+TOTAL_WINDOW = 3600  # … within this time pause sign-in until a new PIN is made on the computer
 
 
 def new_pin() -> str:
@@ -74,8 +78,9 @@ class LanAuth:
         self._clock = clock
         self.pin = pin or new_pin()
         self._lock = threading.Lock()
-        self._fails: dict[str, list[float]] = {}  # address -> times of wrong PINs
-        self._total_fails = 0
+        self._fails: dict[str, list[float]] = {}  # address -> times of wrong PINs (last LOCK_SECONDS)
+        self._all_fails: list[float] = []  # times of wrong PINs from every address (last TOTAL_WINDOW)
+        self.paused = False  # too many wrong PINs: nobody signs in until renew_pin()
         self._sessions: list[Session] = self._load()
 
     # --- persistence --------------------------------------------------------------
@@ -96,23 +101,33 @@ class LanAuth:
         tmp.replace(self.store)
 
     # --- sign-in ----------------------------------------------------------------------
+    def _forget_old(self, now: float) -> None:
+        """Failures age out; addresses without recent failures and expired sessions are dropped."""
+        self._fails = {a: kept for a, times in self._fails.items() if (kept := [t for t in times
+                                                                                  if now - t < LOCK_SECONDS])}
+        self._all_fails = [t for t in self._all_fails if now - t < TOTAL_WINDOW]
+        cutoff = now - SESSION_DAYS * 86400
+        self._sessions = [s for s in self._sessions if s.created >= cutoff]
+
     def sign_in(self, address: str, pin: object, label: str = "") -> str:
-        """Check the PIN; return a new session token, or raise SignInError (401 wrong, 429 locked)."""
+        """Check the PIN; return a new session token, or raise SignInError (401 wrong, 429 locked or paused)."""
         now = self._clock()
         with self._lock:
-            recent = [t for t in self._fails.get(address, []) if now - t < LOCK_SECONDS]
-            self._fails[address] = recent
-            if len(recent) >= PER_ADDRESS_FAILS:
+            self._forget_old(now)
+            if self.paused:  # even the right PIN: otherwise the pause wouldn't stop a guesser
+                raise SignInError(429, "pin_paused")
+            if len(self._fails.get(address, [])) >= PER_ADDRESS_FAILS:
                 raise SignInError(429, "pin_locked")
             if not isinstance(pin, str) or not hmac.compare_digest(pin.strip().encode(), self.pin.encode()):
-                recent.append(now)
-                self._total_fails += 1
-                if self._total_fails >= TOTAL_FAILS_BEFORE_NEW_PIN:
-                    self.pin = new_pin()
-                    self._total_fails = 0
-                    log.warning("too many wrong PINs in total — a new PIN was made (see the computer)")
+                self._fails.setdefault(address, []).append(now)
+                self._all_fails.append(now)
+                if len(self._all_fails) >= TOTAL_FAILS:
+                    self.paused = True
+                    log.warning("%d wrong PINs within %d minutes — sign-in paused until a new PIN is made "
+                                "on the computer", len(self._all_fails), TOTAL_WINDOW // 60)
                 raise SignInError(401, "wrong_pin")
             self._fails.pop(address, None)
+            self._all_fails.clear()  # the right PIN: earlier typos don't count towards the pause any more
             token = secrets.token_hex(32)
             self._sessions.append(Session(secrets.token_hex(4), _hash(token), now, label[:60]))
             self._save()
@@ -130,7 +145,14 @@ class LanAuth:
     # --- management (computer only) ---------------------------------------------------
     def sessions(self) -> list[dict[str, object]]:
         with self._lock:
+            self._forget_old(self._clock())
             return [{"id": s.id, "created": s.created, "label": s.label} for s in self._sessions]
+
+    def wrong_pins(self) -> int:
+        """Wrong PINs from all addresses within the last TOTAL_WINDOW (shown on the computer)."""
+        with self._lock:
+            self._forget_old(self._clock())
+            return len(self._all_fails)
 
     def revoke(self, session_id: str) -> bool:
         with self._lock:
@@ -142,9 +164,11 @@ class LanAuth:
             return True
 
     def renew_pin(self) -> str:
+        """A new PIN (pressed on the computer); also ends a pause after too many wrong PINs."""
         with self._lock:
             self.pin = new_pin()
-            self._total_fails = 0
+            self._all_fails.clear()
+            self.paused = False
             return self.pin
 
 
