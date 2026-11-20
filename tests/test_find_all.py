@@ -3,10 +3,13 @@
 import ipaddress
 from types import SimpleNamespace
 
+import pytest
+
 from tvpult import discovery
 from tvpult.config import Config, TvConfig
 from tvpult.devices import Home
 from tvpult.discovery import TvSighting, candidate_subnets, find_tvs, local_network, model_year, normalize_mac
+from tvpult.i18n import use_lang
 
 N = ipaddress.IPv4Network
 TV_A = "02:00:00:00:55:01"
@@ -182,8 +185,11 @@ def _fake_home_class(sightings):
     return FakeHome
 
 
-def test_cli_find_without_config_lists_all_tvs(monkeypatch, capsys):
+@pytest.mark.parametrize(("lang", "new"), [("ru", "[новый]"), ("en", "[new]")])
+def test_cli_find_without_config_lists_all_tvs(monkeypatch, capsys, lang, new):
     from tvpult import cli
+
+    use_lang(lang)
 
     sightings = [
         TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung TV", 2022, True),
@@ -192,13 +198,16 @@ def test_cli_find_without_config_lists_all_tvs(monkeypatch, capsys):
     monkeypatch.setattr(cli, "Home", _fake_home_class(sightings))
     assert cli.main(["find"]) == 0  # no config at all: lists every TV instead of failing
     out = capsys.readouterr().out
-    assert "192.168.1.50" in out and "2022" in out and "новый" in out
+    assert "192.168.1.50" in out and "2022" in out and new in out
     assert "192.168.1.66" in out and "⚠" in out
     assert "02:00:00:00:55:01" in out
 
 
-def test_cli_find_all_with_config(monkeypatch, capsys):
+@pytest.mark.parametrize(("lang", "text"), [("ru", "[настроен как living]"), ("en", "[configured as living]")])
+def test_cli_find_all_with_config(monkeypatch, capsys, lang, text):
     from tvpult import cli, config
+
+    use_lang(lang)
 
     config.config_file().parent.mkdir(parents=True, exist_ok=True)
     config.config_file().write_text(
@@ -207,12 +216,15 @@ def test_cli_find_all_with_config(monkeypatch, capsys):
     sightings = [TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung", 2022, True)]
     monkeypatch.setattr(cli, "Home", _fake_home_class(sightings))
     assert cli.main(["find", "--all"]) == 0
-    assert "настроен как living" in capsys.readouterr().out
+    assert text in capsys.readouterr().out
 
 
-def test_cli_find_nothing_found_explains(monkeypatch, capsys):
+@pytest.mark.parametrize(("lang", "text"), [("ru", "Телевизоров Samsung не найдено"), ("en", "No Samsung TVs found")])
+def test_cli_find_nothing_found_explains(monkeypatch, capsys, lang, text):
     from tvpult import cli
+
+    use_lang(lang)
 
     monkeypatch.setattr(cli, "Home", _fake_home_class([]))
     assert cli.main(["find"]) == 0
-    assert "не найдено" in capsys.readouterr().out
+    assert text in capsys.readouterr().out

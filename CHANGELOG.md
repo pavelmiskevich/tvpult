@@ -47,6 +47,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   dropped instead of holding a thread; an unexpected error answers a fixed text (`internal`) and logs the
   details; at most 20 keys per request; `true`/`false` are no longer taken as a volume level.
 
+### Changed
+- Looser lower bounds for the dependencies (`platformdirs>=4.0`, `tomlkit>=0.12`, `pychromecast>=14.0`,
+  `segno>=1.5`, `samsungtvws>=3.0.2`); CI runs the tests on exactly these versions, installs the built wheel in a
+  clean environment and runs it, and checks the formatting. Dependabot keeps the actions and `uv.lock` current. (#38)
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command
