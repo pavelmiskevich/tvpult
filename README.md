@@ -23,8 +23,8 @@ window and it stops.
 - **Finds devices by themselves**: if the router hands out new addresses or you move to another network,
   devices are found again by their MAC (TV) or Cast UUID — and checked against the laptop's ARP table, so
   another device on the network can't pose as your TV.
-- **Desktop shortcut**: starts everything without a console window, opens the remote as its own window,
-  stops ~10 s after you close it.
+- **Desktop shortcut** (Windows, Linux, macOS): starts everything without a console window, opens the remote
+  as its own window (Edge, Chrome or Chromium; otherwise a browser tab), stops ~10 s after you close it.
 
 ## Quick start (from source, for now)
 
@@ -33,8 +33,11 @@ Needs [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 and the depen
 ```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-uv run tvpult shortcut    # creates the desktop shortcut "TV Remote" («Пульт ТВ» on a Russian system)
+uv run tvpult shortcut    # creates the shortcut "TV Remote" («Пульт ТВ» on a Russian system)
 ```
+
+The shortcut goes on the desktop on Windows; on Linux into the applications menu and onto the desktop; on macOS
+it is an app in `~/Applications` (Launchpad, Spotlight).
 
 Switch the TVs on and double-click the shortcut. The first time, a **setup screen** finds every Samsung TV
 on your network: give each a name, click **Connect**, press **Allow** on the TV — done, that's your remote.
