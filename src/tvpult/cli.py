@@ -160,6 +160,19 @@ def _our_server_running(port: int) -> bool:
         return False
 
 
+def _running_with_lan(port: int) -> bool:
+    """Does the tvpult already running on this port listen on the home network too?"""
+    import requests
+
+    s = requests.Session()
+    s.trust_env = False
+    try:
+        r = s.get(f"http://127.0.0.1:{port}/api/lan", timeout=2)
+        return bool(r.ok and r.json().get("enabled"))
+    except (requests.RequestException, ValueError, AttributeError):
+        return False
+
+
 def _browser() -> str | None:
     """Edge or Chrome, to open the remote as its own app window."""
     candidates = [
@@ -343,6 +356,9 @@ def main(argv: list[str] | None = None) -> int:
             print(t("cli.init.exists", path=paths.config_file()))
         return 0
     if a.cmd == "app" and _our_server_running(a.port):
+        if a.lan and not _running_with_lan(a.port):  # asked for phones, but the running one has no LAN listener
+            print(t("cli.app_running_no_lan"), file=sys.stderr)
+            logging.warning("already running without --lan; this start asked for it")
         _open_remote(f"http://127.0.0.1:{a.port}/")  # already running: just show it
         return 0
 
@@ -400,14 +416,20 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "launch":
             print(t("cli.opened"), _ready(home, home.tv(a.tv)).launch(a.app))
         elif a.cmd == "vol":
+            v = a.value.strip().lower()
+            level = None
+            if v not in ("mute", "unmute"):
+                try:
+                    level = int(v)
+                except ValueError:
+                    raise DeviceError(code="bad_volume_arg", value=a.value) from None
             bar = _ready(home, home.bar(a.bar))
-            v = a.value.lower()
-            if v in ("mute", "unmute"):
+            if level is None:
                 print(t("cli.vol.muted") if bar.set_muted(v == "mute") else t("cli.vol.unmuted"))
             elif v[0] in "+-":
-                print(t("cli.vol.level", volume=bar.change_volume(int(v))))
+                print(t("cli.vol.level", volume=bar.change_volume(level)))
             else:
-                print(t("cli.vol.level", volume=bar.set_volume(int(v))))
+                print(t("cli.vol.level", volume=bar.set_volume(level)))
         elif a.cmd in ("serve", "app"):
             from .server import Presence, serve
 
@@ -445,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except (DeviceError, ValueError) as e:
         print(t("cli.error", error=localized(e)), file=sys.stderr)
+        if a.cmd == "app":  # from the shortcut nobody sees the console: at least the log has it
+            logging.error("%s", e)
         return 1
     finally:
         home.close()

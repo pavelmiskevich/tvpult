@@ -287,6 +287,7 @@
       <div class="phone-info">
         <p class="setup-msg" data-i18n="phone.scan"></p>
         <p class="lan-url" id="lanUrl"></p>
+        <p class="pin-msg" id="lanMoved" role="status"></p>
         <p class="setup-msg" data-i18n="phone.pin"></p>
         <p class="lan-pin" id="lanPin"></p>
         <button class="b" id="lanNewPin" type="button" data-i18n="phone.new_pin"></button>
@@ -399,6 +400,7 @@ async function loadLan() {
   $("phone").hidden = !info.enabled;
   if (!info.enabled) return;
   $("lanQr").src = info.qr; $("lanUrl").textContent = info.url; $("lanPin").textContent = info.pin;
+  $("lanMoved").textContent = info.moved ? t("phone.moved") : "";  // the computer is on another network now
   const list = $("lanSessions");
   if (!info.sessions.length) { list.replaceChildren(el("span", "setup-msg", t("phone.none"))); return; }
   list.replaceChildren(...info.sessions.map((s) => {

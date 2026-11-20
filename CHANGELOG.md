@@ -4,6 +4,16 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- Rough edges of the command line and shortcut mode (#37): a busy port is one line naming it and suggesting
+  `--port` (no traceback, nothing left listening; on Windows a second server can no longer share the port);
+  starting faster (no reverse-DNS lookup of the listening address); `app --lan` on a remote already running
+  without phone access says so; a TV dropping between two calls is "offline", not a traceback; a key sequence
+  interrupted by a reconnect carries on from the failed key instead of sending the first ones again; `vol`
+  explains a wrong value and asks which soundbar when there are several; a phone no longer keeps shortcut mode
+  running after the window is closed; the computer's page says when the LAN address changed; Wake-on-LAN uses
+  the network's real mask.
+
 ### Added
 - Error messages in English and Russian too (#25): every error tvpult raises has a code and parameters
   (`errors.py`), worded in the dictionaries (`err.<code>`); the API answers with the code, the page and the command

@@ -13,6 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import socket
+import socketserver
+import sys
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -328,8 +331,13 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
         def _lan_info(self) -> dict[str, Any]:
             if auth is None or not lan_url:
                 return {"enabled": False}
+            from . import discovery
+
+            # The listener and the QR code keep the address of the start; after a move to another network
+            # the page says so (a restart picks the new one).
+            moved = urlsplit(lan_url).hostname != discovery.default_local_ip()
             return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
-                    "sessions": auth.sessions()}
+                    "sessions": auth.sessions(), "moved": moved}
 
         def do_GET(self):
             if not self._guard():
@@ -372,7 +380,7 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                     client = json.loads(raw or b"{}").get("client")
                 except (ValueError, AttributeError):
                     client = None
-                ok = presence.valid(client) and presence.bye(client)
+                ok = presence.valid(client) and (role != "local" or presence.bye(client))
                 self._json(HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST, {"bye": bool(ok)})
                 return
             if self.headers.get("X-Tvpult") != "1" or not origin_ok(
@@ -417,7 +425,8 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                 if not presence.valid(body.get("client")):
                     self._err(HTTPStatus.BAD_REQUEST, "bad_client")
                     return
-                presence.hello(body["client"])
+                if role == "local":  # shortcut mode lives as long as a window on this computer, not a phone
+                    presence.hello(body["client"])
                 self._json(HTTPStatus.OK, {"hello": True, "auto_exit": presence.idle_exit})
                 return
             self._handle("POST", path, body)
@@ -434,6 +443,26 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
     return Handler
 
 
+class Listener(ThreadingHTTPServer):
+    """The HTTP server for one address. A port in use is refused on every system.
+
+    On Windows SO_REUSEADDR (which HTTPServer sets) lets a second server bind a port another one is already
+    listening on — two tvpults would quietly share it. There the port is taken exclusively instead.
+    """
+
+    daemon_threads = True
+    if sys.platform == "win32":
+        allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        # Not HTTPServer.server_bind: it looks the address up in reverse DNS (socket.getfqdn) for a name
+        # nothing here uses — seconds of waiting at start for an address the resolver doesn't know.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None = None,
           presence: Presence | None = None, on_ready=None, lan: str | None = None,
           auth: LanAuth | None = None) -> None:
@@ -448,16 +477,23 @@ def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None 
     allowed = {"localhost", "127.0.0.1", *binds, *(extra_names or set())}
     allowed = {a.lower() for a in allowed}
     lan_url = f"http://{lan}:{port}/" if lan else None
-    servers = []
+    servers: list[Listener] = []
+
+    def listen(addr: str, handler) -> None:
+        try:
+            servers.append(Listener((addr, port), handler))
+        except OSError as e:  # the port is taken (another program, or tvpult with other options)
+            for s in servers:  # don't leave the listeners made so far open
+                s.server_close()
+            raise DeviceError(code="port_busy", address=addr, port=port, other=port + 1, detail=e) from e
+
     for addr in binds:
         role = "local" if addr in ("127.0.0.1", "localhost") else "tailnet"
-        handler = make_handler(home, allowed, presence, role=role, auth=auth, lan_url=lan_url)
-        servers.append(ThreadingHTTPServer((addr, port), handler))
+        listen(addr, make_handler(home, allowed, presence, role=role, auth=auth, lan_url=lan_url))
     if lan:
         if auth is None:
             raise ValueError("listening on the home network needs PIN sign-in")
-        handler = make_handler(home, {lan.lower()}, presence, role="lan", auth=auth, lan_url=lan_url)
-        servers.append(ThreadingHTTPServer((lan, port), handler))
+        listen(lan, make_handler(home, {lan.lower()}, presence, role="lan", auth=auth, lan_url=lan_url))
     threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
     for thread in threads:  # (not `t`: that is the translation function)
         thread.start()

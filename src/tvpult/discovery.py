@@ -88,6 +88,14 @@ def read_adapters(get_adapters: Callable[[], Iterable[Any]] | None = None) -> li
         return []
 
 
+def adapter_network(local_ip: str, adapters: Iterable[tuple[str, int]]) -> ipaddress.IPv4Network | None:
+    """The network of the adapter holding local_ip with its real mask (not capped), or None if unknown."""
+    for ip, prefix in adapters:
+        if ip == local_ip and 0 < prefix <= 32:
+            return ipaddress.IPv4Network(f"{ip}/{prefix}", strict=False)
+    return None
+
+
 def local_network(local_ip: str, adapters: Iterable[tuple[str, int]]) -> ipaddress.IPv4Network:
     """The real network of the adapter holding local_ip (mask from the adapter), at most /MIN_PREFIX wide.
 
