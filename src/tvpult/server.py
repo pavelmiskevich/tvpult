@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 from .auth import LanAuth, SignInError, cookie_token, device_label, set_cookie
 from .catalog import UnknownKey, app_names
-from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name
+from .config import APP_ALIAS, MAX_QUICK_APPS, SECTIONS, clean_name, config_file
 from .devices import DeviceError, Home
 from .errors import TvpultError
 from .i18n import page_strings, t
@@ -51,8 +51,11 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     """Route one API call. Pure apart from the device calls, so it is easy to test."""
     if method == "GET" and path == "/api/status":
         quick = getattr(getattr(home, "config", None), "quick_apps", [])
-        return {"devices": home.status(rediscover="background"), "quick": quick,
-                "setup": bool(getattr(home, "setup_needed", False))}
+        out = {"devices": home.status(rediscover="background"), "quick": quick,
+               "setup": bool(getattr(home, "setup_needed", False))}
+        if (broken := getattr(home, "config_error", None)) is not None:  # app mode with a wrong devices.toml
+            out["config_error"] = {**broken.payload(), "file": str(config_file())}
+        return out
     if method != "POST":
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
     if path == "/api/setup/scan":

@@ -71,7 +71,7 @@ def test_add_tv_refuses_a_bad_id_and_writes_nothing():
 def test_add_tv_duplicate_id_restores_the_old_file():
     add_tv_to_config(_tv())
     before = config.config_file().read_bytes()
-    with pytest.raises(tomllib.TOMLDecodeError):
+    with pytest.raises(config.ConfigError):
         add_tv_to_config(_tv())  # same [tv.living] twice would break the file
     assert config.config_file().read_bytes() == before
 
