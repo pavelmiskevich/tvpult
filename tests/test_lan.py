@@ -179,8 +179,12 @@ def _call(url, body=None, headers=None, cookie=None):
     h = {"Content-Type": "application/json", **(headers or {})}
     if cookie:
         h["Cookie"] = f"{COOKIE}={cookie}"
-    req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(),
-                                 method="GET" if body is None else "POST", headers=h)
+    req = urllib.request.Request(
+        url,
+        data=None if body is None else json.dumps(body).encode(),
+        method="GET" if body is None else "POST",
+        headers=h,
+    )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(req, timeout=5) as r:
@@ -306,17 +310,30 @@ def test_shortcut_with_lan_adds_the_flag(monkeypatch, tmp_path):
     assert seen["args"] == "-m tvpult app --lan"
 
 
-@pytest.mark.parametrize("ua,label", [
-    ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
-     "Version/18.0 Mobile/15E148 Safari/604.1", "iPhone · Safari"),
-    ("Mozilla/5.0 (Linux; Android 14; 23053RN02Y) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
-     "Android · Chrome"),
-    ("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 SamsungBrowser/26.0 Chrome/122.0 Mobile Safari/537.36",
-     "Android · Samsung Internet"),
-    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0",
-     "Windows · Edge"),
-    ("", ""), (None, ""),
-])
+@pytest.mark.parametrize(
+    "ua,label",
+    [
+        (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
+            "Version/18.0 Mobile/15E148 Safari/604.1",
+            "iPhone · Safari",
+        ),
+        (
+            "Mozilla/5.0 (Linux; Android 14; 23053RN02Y) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
+            "Android · Chrome",
+        ),
+        (
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 SamsungBrowser/26.0 Chrome/122.0 Mobile Safari/537.36",
+            "Android · Samsung Internet",
+        ),
+        (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0",
+            "Windows · Edge",
+        ),
+        ("", ""),
+        (None, ""),
+    ],
+)
 def test_device_label(ua, label):
     from tvpult.auth import device_label
 

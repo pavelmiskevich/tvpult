@@ -49,8 +49,9 @@ _paths = default_paths()
 def use_paths(config_file: Path | str | None = None, data_dir: Path | str | None = None) -> Paths:
     """Override where the config and the data are (CLI flags, tests)."""
     global _paths
-    _paths = Paths(Path(config_file) if config_file else _paths.config_file,
-                   Path(data_dir) if data_dir else _paths.data_dir)
+    _paths = Paths(
+        Path(config_file) if config_file else _paths.config_file, Path(data_dir) if data_dir else _paths.data_dir
+    )
     return _paths
 
 
@@ -194,10 +195,15 @@ def _devices(raw: dict, kind: str):
 
 def _tv(tv_id: str, section: str, v: dict) -> TvConfig:
     assume = _table(v.get("assume_apps", {}), f"[{section}] assume_apps")
-    return TvConfig(id=tv_id, name=_text(v, "name", section, tv_id), host=_host(v, section),
-                    mac=_mac(v, "mac", section), wake_on_lan=_flag(v, "wake_on_lan", section),
-                    lan_mac=_mac(v, "lan_mac", section),
-                    assume_apps={a: _text(assume, a, f"{section}.assume_apps") for a in assume})
+    return TvConfig(
+        id=tv_id,
+        name=_text(v, "name", section, tv_id),
+        host=_host(v, section),
+        mac=_mac(v, "mac", section),
+        wake_on_lan=_flag(v, "wake_on_lan", section),
+        lan_mac=_mac(v, "lan_mac", section),
+        assume_apps={a: _text(assume, a, f"{section}.assume_apps") for a in assume},
+    )
 
 
 def _soundbar(bar_id: str, section: str, v: dict) -> SoundbarConfig:
@@ -207,8 +213,14 @@ def _soundbar(bar_id: str, section: str, v: dict) -> SoundbarConfig:
     port = v.get("port", 8009)
     if not isinstance(port, int) or isinstance(port, bool) or not 0 < port < 65536:
         raise ConfigError(code="config_bad_port", where=f"[{section}] port")
-    return SoundbarConfig(id=bar_id, name=_text(v, "name", section, bar_id), host=_host(v, section), uuid=uuid,
-                          port=port, mac=_mac(v, "mac", section))
+    return SoundbarConfig(
+        id=bar_id,
+        name=_text(v, "name", section, bar_id),
+        host=_host(v, section),
+        uuid=uuid,
+        port=port,
+        mac=_mac(v, "mac", section),
+    )
 
 
 def parse_config(text: str) -> Config:
@@ -225,16 +237,58 @@ def parse_config(text: str) -> Config:
     ui = _table(raw.get("ui", {}), "[ui]")
     wifi = _table(raw.get("wifi", {}), "[wifi]")
     network = _table(raw.get("network", {}), "[network]")
-    return Config(tvs=tvs, soundbars=bars, extra_apps=apps,
-                  quick_apps=_texts(ui.get("quick_apps", []), "[ui] quick_apps"),
-                  wifi_names={bssid.lower(): _text(wifi, bssid, "wifi") for bssid in wifi},
-                  scan_subnets=_texts(network.get("scan_subnets", []), "[network] scan_subnets"))
+    return Config(
+        tvs=tvs,
+        soundbars=bars,
+        extra_apps=apps,
+        quick_apps=_texts(ui.get("quick_apps", []), "[ui] quick_apps"),
+        wifi_names={bssid.lower(): _text(wifi, bssid, "wifi") for bssid in wifi},
+        scan_subnets=_texts(network.get("scan_subnets", []), "[network] scan_subnets"),
+    )
 
 
 # --- writing (setup wizard) --------------------------------------------------------------
-_TRANSLIT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
-                     ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r",
-                      "s", "t", "u", "f", "h", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"], strict=True))
+_TRANSLIT = dict(
+    zip(
+        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+        [
+            "a",
+            "b",
+            "v",
+            "g",
+            "d",
+            "e",
+            "e",
+            "zh",
+            "z",
+            "i",
+            "y",
+            "k",
+            "l",
+            "m",
+            "n",
+            "o",
+            "p",
+            "r",
+            "s",
+            "t",
+            "u",
+            "f",
+            "h",
+            "ts",
+            "ch",
+            "sh",
+            "sch",
+            "",
+            "y",
+            "",
+            "e",
+            "yu",
+            "ya",
+        ],
+        strict=True,
+    )
+)
 
 
 def slugify(name: str, taken: set[str] | frozenset[str] = frozenset()) -> str:
@@ -274,13 +328,18 @@ def add_tv_to_config(tv: TvConfig, path: Path | None = None) -> None:
     if not re.fullmatch(r"[a-z0-9-]{1,32}", tv.id):
         raise ValueError(f"bad device id: {tv.id!r}")
     before = path.read_text(encoding="utf-8") if path.exists() else None
-    section = "\n".join([
-        f"[tv.{tv.id}]",
-        f"name = {toml_string(tv.name)}",
-        f"host = {toml_string(tv.host)}",
-        f"mac = {toml_string(tv.mac)}",
-        f"wake_on_lan = {'true' if tv.wake_on_lan else 'false'}",
-    ]) + "\n"
+    section = (
+        "\n".join(
+            [
+                f"[tv.{tv.id}]",
+                f"name = {toml_string(tv.name)}",
+                f"host = {toml_string(tv.host)}",
+                f"mac = {toml_string(tv.mac)}",
+                f"wake_on_lan = {'true' if tv.wake_on_lan else 'false'}",
+            ]
+        )
+        + "\n"
+    )
     if before is None:
         text = "# tvpult devices — written by the setup wizard; safe to edit by hand.\n\n" + section
     else:
@@ -334,8 +393,9 @@ def _section(doc, kind: str, dev_id: str):
     return table[dev_id]
 
 
-def update_device(kind: str, dev_id: str, *, name: str | None = None, wake_on_lan: bool | None = None,
-                  path: Path | None = None) -> Config:
+def update_device(
+    kind: str, dev_id: str, *, name: str | None = None, wake_on_lan: bool | None = None, path: Path | None = None
+) -> Config:
     """Rename a device and/or switch Wake-on-LAN (TVs) in devices.toml."""
     if kind not in SECTIONS:
         raise ValueError(f"unknown device kind: {kind!r}")

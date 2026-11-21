@@ -46,8 +46,14 @@ def test_extra_networks_up_to_the_cap():
 
 
 def test_read_adapters_keeps_ipv4_only():
-    adapters = [SimpleNamespace(ips=[SimpleNamespace(ip="192.168.1.20", network_prefix=24),
-                                     SimpleNamespace(ip=("fe80::1", 0, 3), network_prefix=64)])]
+    adapters = [
+        SimpleNamespace(
+            ips=[
+                SimpleNamespace(ip="192.168.1.20", network_prefix=24),
+                SimpleNamespace(ip=("fe80::1", 0, 3), network_prefix=64),
+            ]
+        )
+    ]
     assert discovery.read_adapters(lambda: adapters) == [("192.168.1.20", 24)]
 
 
@@ -68,10 +74,12 @@ def test_model_year():
 # --- the full scan --------------------------------------------------------------------------
 def _find(tvs: dict[str, dict], arp: dict[str, str], extra_ports=()):
     ports = [(h, 8001) for h in tvs] + list(extra_ports)
-    return find_tvs([N("192.168.1.0/24")],
-                    scan_fn=lambda subnets, p: ports,
-                    identify_tv_fn=lambda h: tvs.get(h),
-                    arp_fn=lambda: {ip: normalize_mac(m) for ip, m in arp.items()})
+    return find_tvs(
+        [N("192.168.1.0/24")],
+        scan_fn=lambda subnets, p: ports,
+        identify_tv_fn=lambda h: tvs.get(h),
+        arp_fn=lambda: {ip: normalize_mac(m) for ip, m in arp.items()},
+    )
 
 
 def _ident(mac, model="QE65", year=2022, wired=False, name="TV"):
@@ -114,33 +122,54 @@ def test_cabled_tv_gets_a_helpful_note():
 
 def test_nothing_answering_means_no_arp_read():
     called = []
-    assert find_tvs([N("192.168.1.0/24")], scan_fn=lambda s, p: [], identify_tv_fn=lambda h: None,
-                    arp_fn=lambda: called.append(1) or {}) == []
+    assert (
+        find_tvs(
+            [N("192.168.1.0/24")],
+            scan_fn=lambda s, p: [],
+            identify_tv_fn=lambda h: None,
+            arp_fn=lambda: called.append(1) or {},
+        )
+        == []
+    )
     assert called == []
 
 
 def test_find_tvs_scans_only_the_tv_port():
     asked = []
-    find_tvs([N("192.168.1.0/24")], scan_fn=lambda s, p: asked.append(tuple(p)) or [],
-             identify_tv_fn=lambda h: None, arp_fn=dict)
+    find_tvs(
+        [N("192.168.1.0/24")],
+        scan_fn=lambda s, p: asked.append(tuple(p)) or [],
+        identify_tv_fn=lambda h: None,
+        arp_fn=dict,
+    )
     assert asked == [(8001,)]
 
 
 # --- Home and the CLI ---------------------------------------------------------------------------
 def test_scan_tvs_marks_configured_and_new():
-    sightings = [TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung", 2022, True),
-                 TvSighting("192.168.1.51", normalize_mac(TV_B), "UE43", "Samsung", 2017, True)]
+    sightings = [
+        TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung", 2022, True),
+        TvSighting("192.168.1.51", normalize_mac(TV_B), "UE43", "Samsung", 2017, True),
+    ]
     cfg = Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50", mac=TV_A)})
-    home = Home(cfg, local_ip_fn=lambda: "192.168.1.20", adapters_fn=lambda: [("192.168.1.20", 24)],
-                find_tvs_fn=lambda subnets: sightings)
+    home = Home(
+        cfg,
+        local_ip_fn=lambda: "192.168.1.20",
+        adapters_fn=lambda: [("192.168.1.20", 24)],
+        find_tvs_fn=lambda subnets: sightings,
+    )
     out = home.scan_tvs()
     assert [(t["host"], t["configured"]) for t in out] == [("192.168.1.50", "living"), ("192.168.1.51", None)]
 
 
 def test_scan_uses_the_real_network():
     seen = []
-    home = Home(Config(), local_ip_fn=lambda: "192.168.0.20", adapters_fn=lambda: [("192.168.0.20", 23)],
-                find_tvs_fn=lambda subnets: seen.append(subnets) or [])
+    home = Home(
+        Config(),
+        local_ip_fn=lambda: "192.168.0.20",
+        adapters_fn=lambda: [("192.168.0.20", 23)],
+        find_tvs_fn=lambda subnets: seen.append(subnets) or [],
+    )
     home.scan_tvs()
     assert seen == [[N("192.168.0.0/23")]]
 
@@ -148,8 +177,7 @@ def test_scan_uses_the_real_network():
 def _fake_home_class(sightings):
     class FakeHome(Home):
         def __init__(self, cfg, **kw):
-            super().__init__(cfg, local_ip_fn=lambda: "192.168.1.20", adapters_fn=list,
-                             find_tvs_fn=lambda s: sightings)
+            super().__init__(cfg, local_ip_fn=lambda: "192.168.1.20", adapters_fn=list, find_tvs_fn=lambda s: sightings)
 
     return FakeHome
 
@@ -157,8 +185,10 @@ def _fake_home_class(sightings):
 def test_cli_find_without_config_lists_all_tvs(monkeypatch, capsys):
     from tvpult import cli
 
-    sightings = [TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung TV", 2022, True),
-                 TvSighting("192.168.1.66", normalize_mac(OTHER), "", "odd", None, False, "the MAC it reports differs")]
+    sightings = [
+        TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung TV", 2022, True),
+        TvSighting("192.168.1.66", normalize_mac(OTHER), "", "odd", None, False, "the MAC it reports differs"),
+    ]
     monkeypatch.setattr(cli, "Home", _fake_home_class(sightings))
     assert cli.main(["find"]) == 0  # no config at all: lists every TV instead of failing
     out = capsys.readouterr().out
@@ -172,7 +202,8 @@ def test_cli_find_all_with_config(monkeypatch, capsys):
 
     config.config_file().parent.mkdir(parents=True, exist_ok=True)
     config.config_file().write_text(
-        '[tv.living]\nname = "L"\nhost = "192.168.1.50"\nmac = "02:00:00:00:55:01"\n', encoding="utf-8")
+        '[tv.living]\nname = "L"\nhost = "192.168.1.50"\nmac = "02:00:00:00:55:01"\n', encoding="utf-8"
+    )
     sightings = [TvSighting("192.168.1.50", normalize_mac(TV_A), "QE65", "Samsung", 2022, True)]
     monkeypatch.setattr(cli, "Home", _fake_home_class(sightings))
     assert cli.main(["find", "--all"]) == 0

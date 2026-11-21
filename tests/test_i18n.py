@@ -49,7 +49,7 @@ def test_every_key_the_page_uses_exists():
 
 
 def test_no_russian_left_in_the_page_script():
-    script = PAGE[PAGE.index("<script>"):]
+    script = PAGE[PAGE.index("<script>") :]
     assert not re.search(r"[А-Яа-яЁё]", script)
 
 
@@ -70,10 +70,10 @@ def test_the_page_gets_both_dictionaries_embedded():
 
     assert I18N_SLOT in PAGE.encode("utf-8")
     html = _page().decode("utf-8")
-    script = html[html.index("const I18N = "):]
-    data = json.loads(script[len("const I18N = "):script.index(";\n")])
+    script = html[html.index("const I18N = ") :]
+    data = json.loads(script[len("const I18N = ") : script.index(";\n")])
     assert set(data) == {"en", "ru"} and data["ru"]["settings"] == "Настройки" and data["en"]["settings"] == "Settings"
-    assert "</" not in script[:script.index(";\n")]  # nothing in the dictionaries can close the <script>
+    assert "</" not in script[: script.index(";\n")]  # nothing in the dictionaries can close the <script>
 
 
 # --- lookups -----------------------------------------------------------------------------------------------
@@ -97,14 +97,17 @@ def test_unknown_language_is_refused():
 
 
 # --- which language ------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("env,expected", [
-    ({"TVPULT_LANG": "en", "LANG": "ru_RU.UTF-8"}, "en"),
-    ({"TVPULT_LANG": "ru"}, "ru"),
-    ({"LANG": "ru_RU.UTF-8"}, "ru"),
-    ({"LC_ALL": "en_US.UTF-8", "LANG": "ru_RU.UTF-8"}, "en"),
-    ({"LANG": "de_DE.UTF-8"}, "en"),
-    ({"TVPULT_LANG": "fr", "LANG": "ru_RU"}, "ru"),  # an unknown override is ignored
-])
+@pytest.mark.parametrize(
+    "env,expected",
+    [
+        ({"TVPULT_LANG": "en", "LANG": "ru_RU.UTF-8"}, "en"),
+        ({"TVPULT_LANG": "ru"}, "ru"),
+        ({"LANG": "ru_RU.UTF-8"}, "ru"),
+        ({"LC_ALL": "en_US.UTF-8", "LANG": "ru_RU.UTF-8"}, "en"),
+        ({"LANG": "de_DE.UTF-8"}, "en"),
+        ({"TVPULT_LANG": "fr", "LANG": "ru_RU"}, "ru"),  # an unknown override is ignored
+    ],
+)
 def test_detect_on_linux_and_mac(env, expected):
     assert detect(env, platform="linux") == expected
 
@@ -131,8 +134,21 @@ def test_status_line_says_cable_in_the_cli_language(capsys):
     from tvpult.cli import _print_status
 
     use_lang("en")
-    _print_status([{"kind": "tv", "id": "tv", "name": "TV", "host": "192.168.1.50", "online": True, "power": "on",
-                    "paired": True, "wired": True, "network": ""}])
+    _print_status(
+        [
+            {
+                "kind": "tv",
+                "id": "tv",
+                "name": "TV",
+                "host": "192.168.1.50",
+                "online": True,
+                "power": "on",
+                "paired": True,
+                "wired": True,
+                "network": "",
+            }
+        ]
+    )
     assert "on, cable" in capsys.readouterr().out
 
 

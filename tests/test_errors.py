@@ -45,7 +45,7 @@ def test_no_free_english_text_left_in_raised_errors():
 def test_the_page_words_errors_by_code():
     page = (SRC / "static" / "index.html").read_text(encoding="utf-8")
     assert "errText(data.code" in page and "tv.note_code" in page
-    assert '"wrong PIN"' not in page and "startsWith(\"too many\")" not in page
+    assert '"wrong PIN"' not in page and 'startsWith("too many")' not in page
 
 
 # --- the error itself ------------------------------------------------------------------------------------
@@ -78,8 +78,11 @@ def test_api_answers_with_code_and_params():
     with pytest.raises(ApiError) as e:
         dispatch(Home.__new__(Home), "POST", "/api/settings/quick", {"apps": "x"})
     assert e.value.status == 400
-    assert e.value.payload() == {"error": "apps: a list of up to 12 app names", "code": "bad_apps",
-                                 "params": {"max": "12"}}
+    assert e.value.payload() == {
+        "error": "apps: a list of up to 12 app names",
+        "code": "bad_apps",
+        "params": {"max": "12"},
+    }
 
 
 def test_a_device_error_keeps_its_code_through_the_api():
@@ -118,9 +121,17 @@ def test_cli_prints_errors_in_its_language(capsys):
 def test_find_all_notes_in_the_cli_language(capsys):
     from tvpult.cli import _print_sightings
 
-    tv = {"host": "192.168.1.50", "mac": "020000005501", "model": "QE65", "name": "TV", "year": 2022,
-          "confirmed": False, "note": "the network didn't confirm its MAC (no ARP entry)", "note_code": "tv_no_arp",
-          "configured": None}
+    tv = {
+        "host": "192.168.1.50",
+        "mac": "020000005501",
+        "model": "QE65",
+        "name": "TV",
+        "year": 2022,
+        "confirmed": False,
+        "note": "the network didn't confirm its MAC (no ARP entry)",
+        "note_code": "tv_no_arp",
+        "configured": None,
+    }
     use_lang("ru")
     _print_sightings([tv])
     assert "сеть не подтвердила его MAC" in capsys.readouterr().out

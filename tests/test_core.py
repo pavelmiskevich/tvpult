@@ -14,10 +14,18 @@ from tvpult.wol import magic_packet, subnet_broadcast
 
 
 # --- keys ---------------------------------------------------------------------
-@pytest.mark.parametrize("raw,expected", [
-    ("ok", "KEY_ENTER"), ("vol+", "KEY_VOLUP"), ("KEY_HOME", "KEY_HOME"),
-    ("home", "KEY_HOME"), ("up", "KEY_UP"), ("5", "KEY_5"), ("key_mute", "KEY_MUTE"),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("ok", "KEY_ENTER"),
+        ("vol+", "KEY_VOLUP"),
+        ("KEY_HOME", "KEY_HOME"),
+        ("home", "KEY_HOME"),
+        ("up", "KEY_UP"),
+        ("5", "KEY_5"),
+        ("key_mute", "KEY_MUTE"),
+    ],
+)
 def test_normalize_key_accepts_aliases(raw, expected):
     assert normalize_key(raw) == expected
 
@@ -160,16 +168,19 @@ def test_dispatch_soundbar():
     assert dispatch(home, "POST", "/api/bar/bar/mute", {"muted": None}) == {"muted": True}
 
 
-@pytest.mark.parametrize("path,body,status", [
-    ("/api/tv/tv_a/key", {"keys": ["KEY_FACTORY"]}, 400),
-    ("/api/tv/tv_a/key", {}, 400),
-    ("/api/tv/tv_a/power", {"on": "yes"}, 400),
-    ("/api/tv/tv99/key", {"keys": ["ok"]}, 409),
-    ("/api/tv/tv_a/launch", {"app": "nope"}, 409),
-    ("/api/tv/tv_a/explode", {}, 404),
-    ("/api/bar/bar/volume", {}, 400),
-    ("/etc/passwd", {}, 404),
-])
+@pytest.mark.parametrize(
+    "path,body,status",
+    [
+        ("/api/tv/tv_a/key", {"keys": ["KEY_FACTORY"]}, 400),
+        ("/api/tv/tv_a/key", {}, 400),
+        ("/api/tv/tv_a/power", {"on": "yes"}, 400),
+        ("/api/tv/tv99/key", {"keys": ["ok"]}, 409),
+        ("/api/tv/tv_a/launch", {"app": "nope"}, 409),
+        ("/api/tv/tv_a/explode", {}, 404),
+        ("/api/bar/bar/volume", {}, 400),
+        ("/etc/passwd", {}, 404),
+    ],
+)
 def test_dispatch_errors(path, body, status):
     with pytest.raises(ApiError) as e:
         dispatch(FakeHome(), "POST", path, body)
@@ -203,8 +214,12 @@ def live_server():
 
 
 def _post(url, body, headers=None):
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json", **(headers or {})})
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json", **(headers or {})},
+    )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(req, timeout=5) as r:
@@ -222,8 +237,7 @@ def test_live_post_requires_custom_header(live_server):
 
 def test_live_post_rejects_foreign_origin(live_server):
     base, home = live_server
-    status, _ = _post(base + "/api/tv/tv_a/key", {"keys": ["ok"]},
-                      {"X-Tvpult": "1", "Origin": "http://evil.example"})
+    status, _ = _post(base + "/api/tv/tv_a/key", {"keys": ["ok"]}, {"X-Tvpult": "1", "Origin": "http://evil.example"})
     assert status == 403
     assert home.tvs["tv_a"].calls == []
 
@@ -256,8 +270,9 @@ def test_installed_apps_picks_first_id_the_tv_knows():
 
 
 def test_resolve_app_by_alias_or_tv_name_and_missing():
-    tv = _tv_with_rest({"org.tizen.browser": {"name": "Internet"}, "777": {"name": "Кинопоиск"}},
-                       {"kinopoisk": ["777"]})
+    tv = _tv_with_rest(
+        {"org.tizen.browser": {"name": "Internet"}, "777": {"name": "Кинопоиск"}}, {"kinopoisk": ["777"]}
+    )
     assert tv.resolve_app("browser") == "org.tizen.browser"
     assert tv.resolve_app("кинопоиск") == "777"
     with pytest.raises(DeviceError):

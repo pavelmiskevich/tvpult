@@ -78,9 +78,14 @@ class _Identity:
 
 
 class SamsungTv:
-    def __init__(self, cfg: TvConfig, extra_apps: dict[str, list[str]] | None = None,
-                 wifi_names: dict[str, str] | None = None, keep_alive: bool = False,
-                 host: str | None = None):
+    def __init__(
+        self,
+        cfg: TvConfig,
+        extra_apps: dict[str, list[str]] | None = None,
+        wifi_names: dict[str, str] | None = None,
+        keep_alive: bool = False,
+        host: str | None = None,
+    ):
         self.cfg = cfg
         self.host = host or cfg.host
         self._wifi_names = wifi_names or {}
@@ -175,6 +180,7 @@ class SamsungTv:
         if refresh or self._apps is None:
             return self._probe_apps()
         if time.time() - self._apps_at >= APP_CACHE_SECONDS and self._apps_refreshing.acquire(blocking=False):
+
             def run() -> None:
                 try:
                     self._probe_apps()
@@ -182,6 +188,7 @@ class SamsungTv:
                     log.debug("%s: app list refresh failed", self.cfg.id, exc_info=True)
                 finally:
                     self._apps_refreshing.release()
+
             threading.Thread(target=run, daemon=True, name=f"apps-{self.cfg.id}").start()
         return self._apps
 
@@ -257,9 +264,15 @@ class SamsungTv:
 
     def status(self) -> dict[str, Any]:
         out: dict[str, Any] = {
-            "id": self.cfg.id, "kind": "tv", "name": self.cfg.name, "host": self.host,
-            "online": False, "power": "off", "paired": self.cfg.token_file.exists(),
-            "wake_on_lan": self.cfg.wake_on_lan, "has_mac": bool(self.cfg.mac),
+            "id": self.cfg.id,
+            "kind": "tv",
+            "name": self.cfg.name,
+            "host": self.host,
+            "online": False,
+            "power": "off",
+            "paired": self.cfg.token_file.exists(),
+            "wake_on_lan": self.cfg.wake_on_lan,
+            "has_mac": bool(self.cfg.mac),
         }
         if not _port_open(self.host, 8001):
             return out
@@ -300,8 +313,12 @@ class SamsungTv:
             # key_press_delay defaults to 1 s *after every key* in samsungtvws — that
             # was the remote's lag. We space multi-key sequences ourselves instead.
             self._ws = SamsungTVWS(
-                host=self.host, port=8002, token_file=str(self.cfg.token_file),
-                name=REMOTE_NAME, timeout=8, key_press_delay=0,
+                host=self.host,
+                port=8002,
+                token_file=str(self.cfg.token_file),
+                name=REMOTE_NAME,
+                timeout=8,
+                key_press_delay=0,
             )
         return self._ws
 
@@ -353,8 +370,9 @@ class SamsungTv:
 
         self._require_online()
         paths.data_dir().mkdir(parents=True, exist_ok=True)
-        tv = SamsungTVWS(host=self.host, port=8002, token_file=str(self.cfg.token_file),
-                         name=REMOTE_NAME, timeout=timeout)
+        tv = SamsungTVWS(
+            host=self.host, port=8002, token_file=str(self.cfg.token_file), name=REMOTE_NAME, timeout=timeout
+        )
         try:
             tv.open()
         except Exception as e:  # declined, timed out, connection dropped — all mean "not paired"
@@ -374,7 +392,7 @@ class SamsungTv:
         def go(tv):
             # After a reconnect (_with_remote tries twice) carry on from the key that failed: the ones
             # already sent must not be sent again ("vol+ vol+ vol+" failing at the third made five).
-            for k in norm[len(sent):]:
+            for k in norm[len(sent) :]:
                 if sent:
                     time.sleep(0.15)  # spacing only between keys of one sequence
                 tv.send_key(k)
@@ -522,7 +540,8 @@ class CastSoundbar:
         if self._cc is None:
             cc = pychromecast.get_chromecast_from_host(
                 (self.host, self.cfg.port, uuid.UUID(self.cfg.uuid), None, self.cfg.name),
-                tries=1, timeout=8,
+                tries=1,
+                timeout=8,
             )
             cc.wait(timeout=8)
             self._cc = cc
@@ -543,8 +562,13 @@ class CastSoundbar:
                         raise DeviceError(code="device_failed", name=self.cfg.name, detail=e) from e
 
     def status(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"id": self.cfg.id, "kind": "soundbar", "name": self.cfg.name,
-                               "host": self.host, "online": self.online()}
+        out: dict[str, Any] = {
+            "id": self.cfg.id,
+            "kind": "soundbar",
+            "name": self.cfg.name,
+            "host": self.host,
+            "online": self.online(),
+        }
         if self.wrong_device:
             out["wrong_device"] = True
         if not out["online"]:
@@ -623,13 +647,23 @@ class _Snapshot:
 class Home:
     """All devices from the config, at their current addresses."""
 
-    def __init__(self, config: Config, keep_alive: bool = False, book_path: Path | None = None,
-                 locate_fn=None, local_ip_fn=None, adapters_fn=None, find_tvs_fn=None):
+    def __init__(
+        self,
+        config: Config,
+        keep_alive: bool = False,
+        book_path: Path | None = None,
+        locate_fn=None,
+        local_ip_fn=None,
+        adapters_fn=None,
+        find_tvs_fn=None,
+    ):
         self.config = config
         self.book = discovery.AddressBook.load(book_path or paths.data_dir() / "addresses.json")
         known = self.book.hosts
-        self.tvs = {k: SamsungTv(v, config.extra_apps, config.wifi_names, keep_alive, known.get(k))
-                    for k, v in config.tvs.items()}
+        self.tvs = {
+            k: SamsungTv(v, config.extra_apps, config.wifi_names, keep_alive, known.get(k))
+            for k, v in config.tvs.items()
+        }
         self.bars = {k: CastSoundbar(v, known.get(k)) for k, v in config.soundbars.items()}
         self._locate = locate_fn or discovery.locate
         self._local_ip = local_ip_fn or discovery.default_local_ip
@@ -684,10 +718,15 @@ class Home:
         try:
             name = " ".join(name.split())[:40] or t["model"] or "TV"
             tv_id = paths.slugify(name, taken={*self.tvs, *self.bars})
-            mac = ":".join(t["mac"][i:i + 2] for i in range(0, 12, 2))
-            cfg = TvConfig(id=tv_id, name=name, host=t["host"], mac=mac,
-                           # an assumption: our 2017 set didn't wake over Wi-Fi; editable in settings
-                           wake_on_lan=(t["year"] or 0) >= 2018)
+            mac = ":".join(t["mac"][i : i + 2] for i in range(0, 12, 2))
+            cfg = TvConfig(
+                id=tv_id,
+                name=name,
+                host=t["host"],
+                mac=mac,
+                # an assumption: our 2017 set didn't wake over Wi-Fi; editable in settings
+                wake_on_lan=(t["year"] or 0) >= 2018,
+            )
             tv = SamsungTv(cfg, self.config.extra_apps, self.config.wifi_names, self._keep_alive)
             tv.pair(timeout)  # the TV asks "Allow?"; DeviceError if declined / timed out
             with self._config_lock:
@@ -720,8 +759,9 @@ class Home:
             except (KeyError, ValueError, OSError, paths.ConfigError) as e:
                 raise DeviceError(code="config_not_changed", detail=e) from e
 
-    def update_device(self, kind: str, dev_id: str, name: str | None = None,
-                      wake_on_lan: bool | None = None) -> dict[str, Any]:
+    def update_device(
+        self, kind: str, dev_id: str, name: str | None = None, wake_on_lan: bool | None = None
+    ) -> dict[str, Any]:
         """Rename a device and/or switch a TV's Wake-on-LAN; saved to devices.toml."""
         dev = self._device(kind, dev_id)
         if wake_on_lan and not dev.cfg.mac:
@@ -790,7 +830,7 @@ class Home:
         return list(self.config.quick_apps)
 
     def search(self) -> dict[str, str] | None:
-        """"Search again" from the settings: look for every device now.
+        """ "Search again" from the settings: look for every device now.
 
         At most once per SEARCH_SECONDS: None means "searched a moment ago, not again yet".
         """
@@ -817,12 +857,14 @@ class Home:
 
     # --- discovery --------------------------------------------------------------
     def _wanted(self) -> list[discovery.Wanted]:
-        return ([discovery.Wanted(t.cfg.id, "tv", mac=t.cfg.mac, lan_mac=t.cfg.lan_mac) for t in self.tvs.values()]
-                + [discovery.Wanted(b.cfg.id, "cast", mac=b.cfg.mac, uuid=b.cfg.uuid) for b in self.bars.values()])
+        return [discovery.Wanted(t.cfg.id, "tv", mac=t.cfg.mac, lan_mac=t.cfg.lan_mac) for t in self.tvs.values()] + [
+            discovery.Wanted(b.cfg.id, "cast", mac=b.cfg.mac, uuid=b.cfg.uuid) for b in self.bars.values()
+        ]
 
     def subnets(self):
-        return discovery.candidate_subnets([self._local_ip()], [d.host for d in self.devices()],
-                                           self.config.scan_subnets, self._adapters())
+        return discovery.candidate_subnets(
+            [self._local_ip()], [d.host for d in self.devices()], self.config.scan_subnets, self._adapters()
+        )
 
     def scan_tvs(self) -> list[dict[str, Any]]:
         """Every Samsung TV on the network, configured or not (for `find --all` and the setup wizard).
@@ -832,9 +874,19 @@ class Home:
         by_mac = {discovery.normalize_mac(t.cfg.mac): t.cfg.id for t in self.tvs.values() if t.cfg.mac}
         out = []
         for s in self._find_tvs(self.subnets()):
-            out.append({"host": s.host, "mac": s.mac, "model": s.model, "name": s.name, "year": s.year,
-                        "confirmed": s.confirmed, "note": s.note, "note_code": s.note_code,
-                        "configured": by_mac.get(s.mac)})
+            out.append(
+                {
+                    "host": s.host,
+                    "mac": s.mac,
+                    "model": s.model,
+                    "name": s.name,
+                    "year": s.year,
+                    "confirmed": s.confirmed,
+                    "note": s.note,
+                    "note_code": s.note_code,
+                    "configured": by_mac.get(s.mac),
+                }
+            )
         return out
 
     def relocate(self, force: bool = False) -> dict[str, discovery.Found]:
@@ -921,8 +973,11 @@ class Home:
                 self.search_soon(r["id"])
                 if r["id"] in self.tvs:
                     self.tvs[r["id"]].switched_off = False
-        missing = [d.cfg.id for d, r in zip(devs, result, strict=True)
-                   if not r.get("online") and not getattr(d, "switched_off", False)]
+        missing = [
+            d.cfg.id
+            for d, r in zip(devs, result, strict=True)
+            if not r.get("online") and not getattr(d, "switched_off", False)
+        ]
         if missing and rediscover == "background":
             if self._search_due(missing):
                 self.relocate_in_background(missing)

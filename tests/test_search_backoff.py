@@ -21,8 +21,12 @@ class World:
             self.scans += 1
             return dict(self.found)
 
-        home = Home(Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
-                    locate_fn=locate, local_ip_fn=lambda: self.ip, adapters_fn=list)
+        home = Home(
+            Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
+            locate_fn=locate,
+            local_ip_fn=lambda: self.ip,
+            adapters_fn=list,
+        )
         home._wall = lambda: self.t
         home._clock = lambda: self.t  # the status snapshot (#33) ages on the same clock
         home.tvs["living"].status = lambda: {"id": "living", "kind": "tv", "online": self.tv_on}

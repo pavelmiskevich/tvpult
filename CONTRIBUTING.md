@@ -55,7 +55,8 @@ Needs [uv](https://docs.astral.sh/uv/) (it brings Python 3.12+ and the dependenc
 ```sh
 git clone https://github.com/pavelmiskevich/tvpult && cd tvpult
 uv run pytest                # all tests; a few seconds
-uv run ruff check src tests  # lint (CI runs the same; lines up to 120 characters)
+uv run ruff check .          # lint (CI runs the same; lines up to 120 characters)
+uv run ruff format .         # formatting; CI checks it with `ruff format --check`
 uv run tvpult serve          # the remote page at http://127.0.0.1:8765/
 ```
 

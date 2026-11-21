@@ -44,13 +44,38 @@ def new_pin() -> str:
 def device_label(user_agent: str | None) -> str:
     """A readable name for a session from the browser's User-Agent: 'iPhone · Safari', 'Android · Chrome'."""
     ua = user_agent or ""
-    device = next((name for key, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
-                                          ("Windows", "Windows"), ("Macintosh", "Mac"), ("Linux", "Linux"))
-                   if key in ua), "")
-    browser = next((name for key, name in (("YaBrowser", "Yandex"), ("Edg/", "Edge"), ("OPR/", "Opera"),
-                                           ("Firefox/", "Firefox"), ("SamsungBrowser", "Samsung Internet"),
-                                           ("Chrome/", "Chrome"), ("CriOS", "Chrome"), ("Safari/", "Safari"))
-                    if key in ua), "")
+    device = next(
+        (
+            name
+            for key, name in (
+                ("iPhone", "iPhone"),
+                ("iPad", "iPad"),
+                ("Android", "Android"),
+                ("Windows", "Windows"),
+                ("Macintosh", "Mac"),
+                ("Linux", "Linux"),
+            )
+            if key in ua
+        ),
+        "",
+    )
+    browser = next(
+        (
+            name
+            for key, name in (
+                ("YaBrowser", "Yandex"),
+                ("Edg/", "Edge"),
+                ("OPR/", "Opera"),
+                ("Firefox/", "Firefox"),
+                ("SamsungBrowser", "Samsung Internet"),
+                ("Chrome/", "Chrome"),
+                ("CriOS", "Chrome"),
+                ("Safari/", "Safari"),
+            )
+            if key in ua
+        ),
+        "",
+    )
     return " · ".join(p for p in (device, browser) if p)  # empty: the page shows "Phone" in its language
 
 
@@ -87,8 +112,10 @@ class LanAuth:
     def _load(self) -> list[Session]:
         try:
             raw = json.loads(self.store.read_text(encoding="utf-8"))
-            sessions = [Session(str(s["id"]), str(s["token_hash"]), float(s["created"]), str(s.get("label", "")))
-                        for s in raw.get("sessions", [])]
+            sessions = [
+                Session(str(s["id"]), str(s["token_hash"]), float(s["created"]), str(s.get("label", "")))
+                for s in raw.get("sessions", [])
+            ]
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return []
         cutoff = self._clock() - SESSION_DAYS * 86400
@@ -103,8 +130,9 @@ class LanAuth:
     # --- sign-in ----------------------------------------------------------------------
     def _forget_old(self, now: float) -> None:
         """Failures age out; addresses without recent failures and expired sessions are dropped."""
-        self._fails = {a: kept for a, times in self._fails.items() if (kept := [t for t in times
-                                                                                  if now - t < LOCK_SECONDS])}
+        self._fails = {
+            a: kept for a, times in self._fails.items() if (kept := [t for t in times if now - t < LOCK_SECONDS])
+        }
         self._all_fails = [t for t in self._all_fails if now - t < TOTAL_WINDOW]
         cutoff = now - SESSION_DAYS * 86400
         self._sessions = [s for s in self._sessions if s.created >= cutoff]
@@ -123,8 +151,11 @@ class LanAuth:
                 self._all_fails.append(now)
                 if len(self._all_fails) >= TOTAL_FAILS:
                     self.paused = True
-                    log.warning("%d wrong PINs within %d minutes — sign-in paused until a new PIN is made "
-                                "on the computer", len(self._all_fails), TOTAL_WINDOW // 60)
+                    log.warning(
+                        "%d wrong PINs within %d minutes — sign-in paused until a new PIN is made on the computer",
+                        len(self._all_fails),
+                        TOTAL_WINDOW // 60,
+                    )
                 raise SignInError(401, "wrong_pin")
             self._fails.pop(address, None)
             self._all_fails.clear()  # the right PIN: earlier typos don't count towards the pause any more

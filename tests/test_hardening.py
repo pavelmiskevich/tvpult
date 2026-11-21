@@ -40,8 +40,12 @@ def base():
 
 
 def _get(url, body=None):
-    req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(),
-                                 method="GET" if body is None else "POST", headers=X)
+    req = urllib.request.Request(
+        url,
+        data=None if body is None else json.dumps(body).encode(),
+        method="GET" if body is None else "POST",
+        headers=X,
+    )
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(req, timeout=5) as r:
@@ -98,8 +102,11 @@ def test_an_unexpected_error_answers_a_fixed_text(base, caplog):
 def _home():
     from tvpult.config import Config, TvConfig
 
-    return Home(Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
-                local_ip_fn=lambda: None, adapters_fn=list)
+    return Home(
+        Config(tvs={"living": TvConfig(id="living", name="L", host="192.168.1.50")}),
+        local_ip_fn=lambda: None,
+        adapters_fn=list,
+    )
 
 
 def test_too_many_keys_are_refused():
@@ -115,9 +122,15 @@ def test_too_many_keys_are_refused():
 def test_volume_wants_a_whole_number_not_true_or_false(body):
     from tvpult.config import Config, SoundbarConfig
 
-    home = Home(Config(soundbars={"bar": SoundbarConfig(id="bar", name="B", host="192.168.1.60",
-                                                        uuid="6f1c2a3b1d2e4f508a6b00000000ba01")}),
-                local_ip_fn=lambda: None, adapters_fn=list)
+    home = Home(
+        Config(
+            soundbars={
+                "bar": SoundbarConfig(id="bar", name="B", host="192.168.1.60", uuid="6f1c2a3b1d2e4f508a6b00000000ba01")
+            }
+        ),
+        local_ip_fn=lambda: None,
+        adapters_fn=list,
+    )
     with pytest.raises(ApiError) as e:
         dispatch(home, "POST", "/api/bar/bar/volume", body)
     assert e.value.code == "bad_volume"

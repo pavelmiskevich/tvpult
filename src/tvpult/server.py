@@ -42,8 +42,10 @@ REQUEST_TIMEOUT = 10  # seconds a connection may stay silent (a body promised an
 # check). The page gets a full policy: it loads nothing from anywhere, its one script carries a fresh nonce.
 NO_FRAMES = {"X-Frame-Options": "DENY"}
 API_CSP = "default-src 'none'; frame-ancestors 'none'"
-PAGE_CSP = ("default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; "
-            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+PAGE_CSP = (
+    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; "
+    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
 _DEV_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 
 
@@ -64,8 +66,11 @@ def dispatch(home: Home, method: str, path: str, body: dict[str, Any]) -> Any:
     """Route one API call. Pure apart from the device calls, so it is easy to test."""
     if method == "GET" and path == "/api/status":
         quick = getattr(getattr(home, "config", None), "quick_apps", [])
-        out = {"devices": home.status(rediscover="background"), "quick": quick,
-               "setup": bool(getattr(home, "setup_needed", False))}
+        out = {
+            "devices": home.status(rediscover="background"),
+            "quick": quick,
+            "setup": bool(getattr(home, "setup_needed", False)),
+        }
         if (broken := getattr(home, "config_error", None)) is not None:  # app mode with a wrong devices.toml
             out["config_error"] = {**broken.payload(), "file": str(config_file())}
         return out
@@ -111,8 +116,11 @@ def _settings(home: Home, action: str, body: dict[str, Any]) -> Any:
     """The settings page: everything that used to need editing devices.toml by hand."""
     if action == "quick":
         apps = body.get("apps")
-        if (not isinstance(apps, list) or len(apps) > MAX_QUICK_APPS
-                or not all(isinstance(a, str) and APP_ALIAS.fullmatch(a) for a in apps)):
+        if (
+            not isinstance(apps, list)
+            or len(apps) > MAX_QUICK_APPS
+            or not all(isinstance(a, str) and APP_ALIAS.fullmatch(a) for a in apps)
+        ):
             raise ApiError(HTTPStatus.BAD_REQUEST, "bad_apps", max=MAX_QUICK_APPS)
         return {"quick": home.set_quick_apps(apps)}
     if action == "search":
@@ -216,8 +224,9 @@ class Presence:
 
     _ID = re.compile(r"^[0-9a-f]{32}$")
 
-    def __init__(self, idle_exit: bool = False, grace: float = 8.0, stale: float = 180.0,
-                 startup: float = 120.0, clock=None):
+    def __init__(
+        self, idle_exit: bool = False, grace: float = 8.0, stale: float = 180.0, startup: float = 120.0, clock=None
+    ):
         import time as _time
 
         self._clock = clock or _time.monotonic
@@ -310,8 +319,14 @@ def qr_data_uri(text: str) -> str:
     return segno.make(text, error="m").svg_data_uri(scale=5, border=2, dark="#111318", light="#ffffff")
 
 
-def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None = None,
-                 role: str = "local", auth: LanAuth | None = None, lan_url: str | None = None):
+def make_handler(
+    home: Home,
+    allowed_hosts: set[str],
+    presence: Presence | None = None,
+    role: str = "local",
+    auth: LanAuth | None = None,
+    lan_url: str | None = None,
+):
     """role: 'local' (this computer: everything, including the PIN), 'tailnet' (Tailscale vouches for the
     caller), or 'lan' (home network: every API call needs a PIN session)."""
     presence = presence or Presence()
@@ -339,8 +354,9 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             self.wfile.write(payload)
 
         def _json(self, status: int, obj: Any, headers: dict[str, str] | None = None) -> None:
-            self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8", headers)
+            self._send(
+                status, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", headers
+            )
 
         def _err(self, status: int, code: str) -> None:
             self._json(status, ApiError(status, code).payload())
@@ -368,9 +384,16 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             # The listener and the QR code keep the address of the start; after a move to another network
             # the page says so (a restart picks the new one).
             moved = urlsplit(lan_url).hostname != discovery.default_local_ip()
-            return {"enabled": True, "url": lan_url, "pin": auth.pin, "qr": qr_data_uri(lan_url),
-                    "sessions": auth.sessions(), "paused": auth.paused, "wrong_pins": auth.wrong_pins(),
-                    "moved": moved}
+            return {
+                "enabled": True,
+                "url": lan_url,
+                "pin": auth.pin,
+                "qr": qr_data_uri(lan_url),
+                "sessions": auth.sessions(),
+                "paused": auth.paused,
+                "wrong_pins": auth.wrong_pins(),
+                "moved": moved,
+            }
 
         def do_GET(self):
             if not self._guard():
@@ -378,8 +401,12 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
             path = urlsplit(self.path).path
             if path in ("/", "/index.html"):  # the page holds no secrets: served to everyone allowed in
                 nonce = secrets.token_urlsafe(16)
-                self._send(HTTPStatus.OK, _page(nonce), "text/html; charset=utf-8",
-                           {"Content-Security-Policy": PAGE_CSP.format(nonce=nonce)})
+                self._send(
+                    HTTPStatus.OK,
+                    _page(nonce),
+                    "text/html; charset=utf-8",
+                    {"Content-Security-Policy": PAGE_CSP.format(nonce=nonce)},
+                )
                 return
             if path == "/api/lan":  # the PIN and the sessions: this computer only
                 if role != "local":
@@ -442,8 +469,9 @@ def make_handler(home: Home, allowed_hosts: set[str], presence: Presence | None 
                     self._err(HTTPStatus.NOT_FOUND, "not_found")
                     return
                 try:
-                    token = auth.sign_in(self.client_address[0], body.get("pin"),
-                                         label=device_label(self.headers.get("User-Agent")))
+                    token = auth.sign_in(
+                        self.client_address[0], body.get("pin"), label=device_label(self.headers.get("User-Agent"))
+                    )
                 except SignInError as e:
                     self._json(e.status, e.payload())
                     return
@@ -506,9 +534,16 @@ class Listener(ThreadingHTTPServer):
         self.server_name, self.server_port = self.server_address[:2]
 
 
-def serve(home: Home, binds: list[str], port: int, extra_names: set[str] | None = None,
-          presence: Presence | None = None, on_ready=None, lan: str | None = None,
-          auth: LanAuth | None = None) -> None:
+def serve(
+    home: Home,
+    binds: list[str],
+    port: int,
+    extra_names: set[str] | None = None,
+    presence: Presence | None = None,
+    on_ready=None,
+    lan: str | None = None,
+    auth: LanAuth | None = None,
+) -> None:
     """Serve until Ctrl+C — or, with presence.idle_exit, until the last page is closed.
 
     binds: 127.0.0.1 ('local') and, with --tailnet, the Tailscale address ('tailnet').

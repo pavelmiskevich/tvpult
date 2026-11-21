@@ -120,9 +120,12 @@ def local_network(local_ip: str, adapters: Iterable[tuple[str, int]]) -> ipaddre
     return ipaddress.IPv4Network(f"{local_ip}/24", strict=False)
 
 
-def candidate_subnets(local_ips: Iterable[str | None], known_hosts: Iterable[str],
-                      extra: Iterable[str] = (),
-                      adapters: Iterable[tuple[str, int]] | None = None) -> list[ipaddress.IPv4Network]:
+def candidate_subnets(
+    local_ips: Iterable[str | None],
+    known_hosts: Iterable[str],
+    extra: Iterable[str] = (),
+    adapters: Iterable[tuple[str, int]] | None = None,
+) -> list[ipaddress.IPv4Network]:
     """Private networks to scan, most likely first, at most MAX_SUBNETS.
 
     * the laptop's own network(s) with their real mask (adapters), capped at /MIN_PREFIX — only the
@@ -175,8 +178,12 @@ def port_open(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
-def scan(subnets: Iterable[ipaddress.IPv4Network], ports: Iterable[int],
-         connect: Callable[[str, int], bool] = port_open, workers: int = 128) -> list[tuple[str, int]]:
+def scan(
+    subnets: Iterable[ipaddress.IPv4Network],
+    ports: Iterable[int],
+    connect: Callable[[str, int], bool] = port_open,
+    workers: int = 128,
+) -> list[tuple[str, int]]:
     """Every (host, port) in the subnets that accepts a TCP connection."""
     targets = [(str(h), p) for net in subnets for h in net.hosts() for p in ports]
     if not targets:
@@ -208,8 +215,13 @@ def identify_tv(host: str, http: requests.Session | None = None) -> dict[str, An
     mac = normalize_mac(dev.get("wifiMac"))
     if not mac:
         return None
-    return {"mac": mac, "model": str(dev.get("modelName", "")), "name": str(dev.get("name", "")),
-            "year": model_year(dev.get("model")), "wired": dev.get("networkType") == "wired"}
+    return {
+        "mac": mac,
+        "model": str(dev.get("modelName", "")),
+        "name": str(dev.get("name", "")),
+        "year": model_year(dev.get("model")),
+        "wired": dev.get("networkType") == "wired",
+    }
 
 
 @dataclass
@@ -226,10 +238,13 @@ class TvSighting:
     note_code: str = ""  # … and the same as an error code (errors.py), for the page and the CLI in their language
 
 
-def find_tvs(subnets: list[ipaddress.IPv4Network], *,
-             scan_fn: Callable[..., list[tuple[str, int]]] | None = None,
-             identify_tv_fn: Callable[[str], dict[str, Any] | None] | None = None,
-             arp_fn: Callable[[], dict[str, str]] | None = None) -> list[TvSighting]:
+def find_tvs(
+    subnets: list[ipaddress.IPv4Network],
+    *,
+    scan_fn: Callable[..., list[tuple[str, int]]] | None = None,
+    identify_tv_fn: Callable[[str], dict[str, Any] | None] | None = None,
+    arp_fn: Callable[[], dict[str, str]] | None = None,
+) -> list[TvSighting]:
     """Every Samsung TV answering in the subnets, configured or not, sorted by address.
 
     A TV whose reported MAC the ARP table doesn't confirm is still listed — with confirmed=False and
@@ -254,8 +269,18 @@ def find_tvs(subnets: list[ipaddress.IPv4Network], *,
         code = ""
         if not confirmed:
             code = "tv_cabled" if ident.get("wired") and arp_mac else no_arp if not arp_mac else "tv_mac_differs"
-        seen.append(TvSighting(host, ident["mac"], ident["model"], ident["name"], ident.get("year"),
-                               confirmed, str(TvpultError(code=code)) if code else "", code))
+        seen.append(
+            TvSighting(
+                host,
+                ident["mac"],
+                ident["model"],
+                ident["name"],
+                ident.get("year"),
+                confirmed,
+                str(TvpultError(code=code)) if code else "",
+                code,
+            )
+        )
     return sorted(seen, key=lambda t: ipaddress.IPv4Address(t.host))
 
 
@@ -263,7 +288,8 @@ def identify_cast(host: str, http: requests.Session | None = None) -> str | None
     """Normalised Cast UUID of the device at host, or None."""
     try:
         r = (http or _http()).get(
-            f"http://{host}:{CAST_HTTP_PORT}/setup/eureka_info?params=name,device_info", timeout=2)
+            f"http://{host}:{CAST_HTTP_PORT}/setup/eureka_info?params=name,device_info", timeout=2
+        )
         data = r.json() if r.ok else {}
     except (requests.RequestException, ValueError):
         return None
@@ -296,21 +322,25 @@ def parse_arp(text: str) -> ArpTable:
 
 def _arp_sources() -> list[tuple[str, Callable[[], str]]]:
     """Ways to read the ARP table on this system, best first."""
+
     def run(*cmd: str) -> Callable[[], str]:
         def read() -> str:
             out = run_tool(list(cmd), capture_output=True, text=True, timeout=10)
             if out.returncode != 0:
                 raise OSError(f"{cmd[0]} exited with {out.returncode}")
             return out.stdout
+
         return read
 
     if sys.platform == "win32":
         return [("arp -a", run("arp", "-a"))]
     # Linux: the kernel's table needs no program; `arp` (net-tools) is often not installed any more.
     # -n everywhere: no name lookups, which can take seconds per entry.
-    return [("/proc/net/arp", lambda: Path("/proc/net/arp").read_text(encoding="utf-8")),
-            ("ip neigh", run("ip", "neigh")),
-            ("arp -an", run("arp", "-an"))]
+    return [
+        ("/proc/net/arp", lambda: Path("/proc/net/arp").read_text(encoding="utf-8")),
+        ("ip neigh", run("ip", "neigh")),
+        ("arp -an", run("arp", "-an")),
+    ]
 
 
 _arp_warned = False
@@ -325,8 +355,9 @@ def read_arp() -> ArpTable:
             log.debug("ARP table: %s failed: %s", name, e)
     if not _arp_warned:  # once: the search asks every minute
         _arp_warned = True
-        log.warning("can't read the ARP table (%s) — no device can be confirmed",
-                    ", ".join(name for name, _ in _arp_sources()))
+        log.warning(
+            "can't read the ARP table (%s) — no device can be confirmed", ", ".join(name for name, _ in _arp_sources())
+        )
     table = ArpTable()
     table.available = False
     return table
@@ -351,6 +382,7 @@ def mac_confirmed(ip: str, claimed_mac: str, arp_fn: Callable[[], dict[str, str]
 @dataclass(frozen=True)
 class Wanted:
     """A device to look for."""
+
     id: str
     kind: str  # "tv" | "cast"
     mac: str = ""
@@ -368,13 +400,17 @@ class Found:
     how: str  # "mac" | "uuid" | "arp"
 
 
-def locate(wanted: Iterable[Wanted], subnets: list[ipaddress.IPv4Network], *,
-           hints: dict[str, str] | None = None,
-           scan_fn: Callable[..., list[tuple[str, int]]] = scan,
-           slow_connect: Callable[[str, int], bool] = lambda h, p: port_open(h, p, HINT_TIMEOUT),
-           identify_tv_fn: Callable[[str], dict[str, str] | None] = identify_tv,
-           identify_cast_fn: Callable[[str], str | None] = identify_cast,
-           arp_fn: Callable[[], dict[str, str]] = read_arp) -> dict[str, Found]:
+def locate(
+    wanted: Iterable[Wanted],
+    subnets: list[ipaddress.IPv4Network],
+    *,
+    hints: dict[str, str] | None = None,
+    scan_fn: Callable[..., list[tuple[str, int]]] = scan,
+    slow_connect: Callable[[str, int], bool] = lambda h, p: port_open(h, p, HINT_TIMEOUT),
+    identify_tv_fn: Callable[[str], dict[str, str] | None] = identify_tv,
+    identify_cast_fn: Callable[[str], str | None] = identify_cast,
+    arp_fn: Callable[[], dict[str, str]] = read_arp,
+) -> dict[str, Found]:
     """Scan the subnets once and return device id -> where it is now.
 
     hints: device id -> last known address. A device the fast scan missed is tried once more at
@@ -383,10 +419,11 @@ def locate(wanted: Iterable[Wanted], subnets: list[ipaddress.IPv4Network], *,
     wanted = list(wanted)
     tvs_by_mac = {normalize_mac(w.mac): w.id for w in wanted if w.kind == "tv" and normalize_mac(w.mac)}
     casts_by_uuid = {normalize_uuid(w.uuid): w.id for w in wanted if w.kind == "cast" and normalize_uuid(w.uuid)}
-    retry = list(dict.fromkeys(
-        (host, TV_PORT if w.kind == "tv" else CAST_PORT)
-        for w in wanted if (host := (hints or {}).get(w.id))
-    ))
+    retry = list(
+        dict.fromkeys(
+            (host, TV_PORT if w.kind == "tv" else CAST_PORT) for w in wanted if (host := (hints or {}).get(w.id))
+        )
+    )
     # The slow retries at the last addresses run alongside the fast scan, not after it.
     with ThreadPoolExecutor(max_workers=len(retry) + 1) as ex:
         scanning = ex.submit(scan_fn, subnets, (TV_PORT, CAST_PORT))
@@ -454,8 +491,7 @@ class AddressBook:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"hosts": self.hosts, "scanned_at": self.scanned_at}, indent=2),
-                       encoding="utf-8")
+        tmp.write_text(json.dumps({"hosts": self.hosts, "scanned_at": self.scanned_at}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
     def mark_scanned(self) -> None:

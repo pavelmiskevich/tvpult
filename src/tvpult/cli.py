@@ -50,7 +50,7 @@ def _print_sightings(tvs: list[dict]) -> None:
     for tv in tvs:
         year = tv["year"] or "?"
         who = t("cli.configured_as", id=tv["configured"]) if tv["configured"] else t("cli.new")
-        mac = ":".join(tv["mac"][i:i + 2] for i in range(0, 12, 2))
+        mac = ":".join(tv["mac"][i : i + 2] for i in range(0, 12, 2))
         note = localized(TvpultError(tv["note"], code=tv.get("note_code") or None))
         mark = "" if tv["confirmed"] else "  ⚠ " + note
         print(f"{tv['host']:<15} {tv['model'] or '?':<16} {year:<5} {mac}  {tv['name']}  [{who}]{mark}")
@@ -230,8 +230,9 @@ def _make_shortcut(lan: bool = False) -> str:
     # -EncodedCommand (UTF-16LE base64): the Cyrillic name survives; a plain -Command argument
     # turned it into '?', which Windows refuses in file names.
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    out = run_tool(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-                   capture_output=True, timeout=30)
+    out = run_tool(
+        ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], capture_output=True, timeout=30
+    )
     path = out.stdout.decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
     if out.returncode != 0 or not Path(path[0]).is_file():
         err = out.stderr.decode("utf-8", "replace").strip() or out.stdout.decode("utf-8", "replace").strip()
@@ -246,24 +247,26 @@ def _ps_quote(value: object) -> str:
 
 def shortcut_script(target: str, arguments: str, workdir: Path, icon: Path) -> str:
     """PowerShell that creates the desktop shortcut and prints its path (UTF-8)."""
-    return "\n".join([
-        "$ErrorActionPreference = 'Stop'",
-        "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
-        "$d = [Environment]::GetFolderPath('Desktop')",
-        f"$p = Join-Path $d {_ps_quote(shortcut_name() + '.lnk')}",
-        # WScript.Shell saves through the ANSI code page, which may lack Cyrillic: save under an
-        # ASCII name, then rename with PowerShell, which handles Unicode names.
-        "$tmp = Join-Path $d 'tvpult-remote.lnk'",
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($tmp)",
-        f"$s.TargetPath = {_ps_quote(target)}",
-        f"$s.Arguments = {_ps_quote(arguments)}",
-        f"$s.WorkingDirectory = {_ps_quote(workdir)}",
-        f"$s.IconLocation = {_ps_quote(f'{icon},0')}",
-        f"$s.Description = {_ps_quote(t('shortcut.description'))}",
-        "$s.Save()",
-        "Move-Item -LiteralPath $tmp -Destination $p -Force",
-        "Write-Output $p",
-    ])
+    return "\n".join(
+        [
+            "$ErrorActionPreference = 'Stop'",
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+            "$d = [Environment]::GetFolderPath('Desktop')",
+            f"$p = Join-Path $d {_ps_quote(shortcut_name() + '.lnk')}",
+            # WScript.Shell saves through the ANSI code page, which may lack Cyrillic: save under an
+            # ASCII name, then rename with PowerShell, which handles Unicode names.
+            "$tmp = Join-Path $d 'tvpult-remote.lnk'",
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($tmp)",
+            f"$s.TargetPath = {_ps_quote(target)}",
+            f"$s.Arguments = {_ps_quote(arguments)}",
+            f"$s.WorkingDirectory = {_ps_quote(workdir)}",
+            f"$s.IconLocation = {_ps_quote(f'{icon},0')}",
+            f"$s.Description = {_ps_quote(t('shortcut.description'))}",
+            "$s.Save()",
+            "Move-Item -LiteralPath $tmp -Destination $p -Force",
+            "Write-Output $p",
+        ]
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -318,8 +321,12 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     paths.use_paths(a.config, a.data_dir)
     _windowless_output()
-    logging.basicConfig(level=logging.INFO if (a.verbose or a.cmd == "app") else logging.WARNING,
-                        format="%(asctime)s %(levelname)s %(message)s", stream=sys.stderr, force=True)
+    logging.basicConfig(
+        level=logging.INFO if (a.verbose or a.cmd == "app") else logging.WARNING,
+        format="%(asctime)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
     if a.cmd == "app":  # started from the shortcut: no console to read, so always keep a log file
         paths.data_dir().mkdir(parents=True, exist_ok=True)
         _trim_log()
@@ -376,8 +383,7 @@ def main(argv: list[str] | None = None) -> int:
     if cfg.empty and broken is None and a.cmd not in NO_DEVICES_NEEDED:
         print(t("cli.not_configured", path=paths.config_file()), file=sys.stderr)
         return 1
-    home = Home(cfg, keep_alive=a.cmd in ("serve", "app"),
-                book_path=Path(a.addresses) if a.addresses else None)
+    home = Home(cfg, keep_alive=a.cmd in ("serve", "app"), book_path=Path(a.addresses) if a.addresses else None)
     home.config_error = broken
     try:
         if a.cmd == "status":
@@ -466,8 +472,16 @@ def main(argv: list[str] | None = None) -> int:
             url = f"http://127.0.0.1:{a.port}/"
             if a.cmd == "app":
                 print(t("cli.app_open"))
-                serve(home, binds, a.port, names, Presence(idle_exit=True),
-                      on_ready=None if a.no_browser else (lambda: _open_remote(url)), lan=lan, auth=auth)
+                serve(
+                    home,
+                    binds,
+                    a.port,
+                    names,
+                    Presence(idle_exit=True),
+                    on_ready=None if a.no_browser else (lambda: _open_remote(url)),
+                    lan=lan,
+                    auth=auth,
+                )
             else:
                 print(t("cli.serve_open"))
                 serve(home, binds, a.port, names, lan=lan, auth=auth)

@@ -30,7 +30,6 @@ BAR_MAC = "02:00:00:00:BA:01"
 N = ipaddress.IPv4Network
 
 
-
 # --- identifiers -----------------------------------------------------------------
 @pytest.mark.parametrize("raw", ["02:00:00:00:55:01", "02-00-00-00-55-01", "020000005501", " 02:00:00:00:55:01 "])
 def test_normalize_mac_formats(raw):
@@ -169,7 +168,9 @@ def _sources(monkeypatch, *outputs):
             if isinstance(out, Exception):
                 raise out
             return out
+
         return read
+
     monkeypatch.setattr(discovery, "_arp_sources", lambda: [(f"src{i}", reader(o)) for i, o in enumerate(outputs)])
 
 
@@ -186,9 +187,12 @@ def test_read_arp_says_when_nothing_works(monkeypatch, caplog):
     t = real_read_arp()
     assert t == {} and t.available is False
     assert "can't read the ARP table" in caplog.text
-    found = find_tvs([N("192.168.1.0/24")], scan_fn=lambda s, p: [("192.168.1.50", 8001)],
-                     identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC), "model": "", "name": "", "year": None},
-                     arp_fn=lambda: t)
+    found = find_tvs(
+        [N("192.168.1.0/24")],
+        scan_fn=lambda s, p: [("192.168.1.50", 8001)],
+        identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC), "model": "", "name": "", "year": None},
+        arp_fn=lambda: t,
+    )
     assert not found[0].confirmed and found[0].note_code == "tv_arp_unavailable"
 
 
@@ -200,8 +204,11 @@ def test_arp_sources_per_system(monkeypatch):
 
 
 # --- matching ------------------------------------------------------------------------------------
-WANTED = [Wanted("tv_a", "tv", mac=TV_A_MAC), Wanted("tv_b", "tv", mac=TV_B_MAC),
-          Wanted("bar", "cast", mac=BAR_MAC, uuid=BAR_UUID)]
+WANTED = [
+    Wanted("tv_a", "tv", mac=TV_A_MAC),
+    Wanted("tv_b", "tv", mac=TV_B_MAC),
+    Wanted("bar", "cast", mac=BAR_MAC, uuid=BAR_UUID),
+]
 
 
 def _honest_arp(tvs, casts):
@@ -213,24 +220,28 @@ def _honest_arp(tvs, casts):
 
 def _locate(open_ports, tvs, casts, arp=None, hints=None, slow=()):
     table = _honest_arp(tvs, casts) if arp is None else arp
-    return locate(WANTED, [N("192.168.2.0/24")], hints=hints,
-                  scan_fn=lambda subnets, ports: open_ports,
-                  slow_connect=lambda h, p: (h, p) in slow,
-                  identify_tv_fn=lambda h: {"mac": normalize_mac(tvs[h])} if h in tvs else None,
-                  identify_cast_fn=lambda h: discovery.normalize_uuid(casts.get(h)) or None,
-                  arp_fn=lambda: table)
+    return locate(
+        WANTED,
+        [N("192.168.2.0/24")],
+        hints=hints,
+        scan_fn=lambda subnets, ports: open_ports,
+        slow_connect=lambda h, p: (h, p) in slow,
+        identify_tv_fn=lambda h: {"mac": normalize_mac(tvs[h])} if h in tvs else None,
+        identify_cast_fn=lambda h: discovery.normalize_uuid(casts.get(h)) or None,
+        arp_fn=lambda: table,
+    )
 
 
 def test_locate_matches_tvs_by_mac_even_when_addresses_swapped():
-    found = _locate([("192.168.2.50", 8001), ("192.168.2.51", 8001)],
-                    {"192.168.2.50": TV_B_MAC, "192.168.2.51": TV_A_MAC}, {})
+    found = _locate(
+        [("192.168.2.50", 8001), ("192.168.2.51", 8001)], {"192.168.2.50": TV_B_MAC, "192.168.2.51": TV_A_MAC}, {}
+    )
     assert found["tv_a"] == Found("192.168.2.51", "mac")
     assert found["tv_b"] == Found("192.168.2.50", "mac")
 
 
 def test_locate_ignores_foreign_tv_and_unanswering_hosts():
-    found = _locate([("192.168.2.30", 8001), ("192.168.2.31", 8001)],
-                    {"192.168.2.30": "11:22:33:44:55:66"}, {})
+    found = _locate([("192.168.2.30", 8001), ("192.168.2.31", 8001)], {"192.168.2.30": "11:22:33:44:55:66"}, {})
     assert found == {}
 
 
@@ -254,14 +265,12 @@ def test_locate_other_cast_device_is_not_our_bar():
 
 def test_locate_retries_last_address_slowly_when_fast_scan_missed_it():
     # the fast scan missed the sleepy living-room TV at its old address; the slow retry finds it
-    found = _locate([], {"192.168.1.50": TV_A_MAC}, {}, hints={"tv_a": "192.168.1.50"},
-                    slow={("192.168.1.50", 8001)})
+    found = _locate([], {"192.168.1.50": TV_A_MAC}, {}, hints={"tv_a": "192.168.1.50"}, slow={("192.168.1.50", 8001)})
     assert found == {"tv_a": Found("192.168.1.50", "mac")}
 
 
 def test_locate_slow_retry_still_checks_identity():
-    found = _locate([], {"192.168.1.50": TV_B_MAC}, {}, hints={"tv_a": "192.168.1.50"},
-                    slow={("192.168.1.50", 8001)})
+    found = _locate([], {"192.168.1.50": TV_B_MAC}, {}, hints={"tv_a": "192.168.1.50"}, slow={("192.168.1.50", 8001)})
     assert found == {"tv_b": Found("192.168.1.50", "mac")}  # it's the bedroom TV now — not the living-room TV
 
 
@@ -272,11 +281,16 @@ def test_locate_slow_retry_runs_alongside_scan_without_duplicates():
         identified.append(h)
         return {"mac": normalize_mac(TV_A_MAC)}
 
-    found = locate(WANTED, [], hints={"tv_a": "192.168.2.51"},
-                   scan_fn=lambda s, p: [("192.168.2.51", 8001)],
-                   slow_connect=lambda h, p: True,  # the slow retry also sees it
-                   identify_tv_fn=ident, identify_cast_fn=lambda h: None,
-                   arp_fn=lambda: {"192.168.2.51": normalize_mac(TV_A_MAC)})
+    found = locate(
+        WANTED,
+        [],
+        hints={"tv_a": "192.168.2.51"},
+        scan_fn=lambda s, p: [("192.168.2.51", 8001)],
+        slow_connect=lambda h, p: True,  # the slow retry also sees it
+        identify_tv_fn=ident,
+        identify_cast_fn=lambda h: None,
+        arp_fn=lambda: {"192.168.2.51": normalize_mac(TV_A_MAC)},
+    )
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
     assert identified == ["192.168.2.51"]  # asked once, not twice
 
@@ -290,9 +304,16 @@ def test_locate_slow_retry_overlaps_scan_in_time():
         assert started.wait(2), "slow retry did not start while the scan was running"
         return []
 
-    locate(WANTED, [], hints={"tv_a": "192.168.2.51"}, scan_fn=slow_scan,
-           slow_connect=lambda h, p: started.set() or False,
-           identify_tv_fn=lambda h: None, identify_cast_fn=lambda h: None, arp_fn=dict)
+    locate(
+        WANTED,
+        [],
+        hints={"tv_a": "192.168.2.51"},
+        scan_fn=slow_scan,
+        slow_connect=lambda h, p: started.set() or False,
+        identify_tv_fn=lambda h: None,
+        identify_cast_fn=lambda h: None,
+        arp_fn=dict,
+    )
 
 
 # --- address book ------------------------------------------------------------------------------
@@ -387,8 +408,10 @@ def test_wol_targets_include_tv_and_laptop_networks(monkeypatch):
 # --- relocation in Home --------------------------------------------------------------------------
 def _config():
     return Config(
-        tvs={"tv_a": TvConfig(id="tv_a", name="Living room", host="192.168.1.50", mac=TV_A_MAC),
-             "tv_b": TvConfig(id="tv_b", name="Bedroom", host="192.168.1.51", mac=TV_B_MAC)},
+        tvs={
+            "tv_a": TvConfig(id="tv_a", name="Living room", host="192.168.1.50", mac=TV_A_MAC),
+            "tv_b": TvConfig(id="tv_b", name="Bedroom", host="192.168.1.51", mac=TV_B_MAC),
+        },
         soundbars={"bar": SoundbarConfig(id="bar", name="JBL", host="192.168.1.60", uuid=BAR_UUID, mac=BAR_MAC)},
     )
 
@@ -407,8 +430,7 @@ def test_relocate_moves_devices_saves_and_rate_limits(tmp_path):
         calls.append((list(wanted), list(subnets), hints))
         return {"tv_a": Found("192.168.2.51", "mac"), "bar": Found("192.168.2.60", "uuid")}
 
-    home = Home(_config(), book_path=tmp_path / "a.json", locate_fn=fake_locate,
-                local_ip_fn=lambda: "192.168.2.25")
+    home = Home(_config(), book_path=tmp_path / "a.json", locate_fn=fake_locate, local_ip_fn=lambda: "192.168.2.25")
     found = home.relocate()
     assert set(found) == {"tv_a", "bar"}
     assert home.tv("tv_a").host == "192.168.2.51" and home.bar().host == "192.168.2.60"
@@ -438,8 +460,11 @@ def test_relocate_rate_limit_shared_through_address_book(tmp_path):
 
 
 def test_relocate_unchanged_host_keeps_connection(tmp_path):
-    home = Home(_config(), book_path=tmp_path / "a.json",
-                locate_fn=lambda w, s, hints=None: {"tv_a": Found("192.168.1.50", "mac")})
+    home = Home(
+        _config(),
+        book_path=tmp_path / "a.json",
+        locate_fn=lambda w, s, hints=None: {"tv_a": Found("192.168.1.50", "mac")},
+    )
     tv = home.tv("tv_a")
     sentinel = object()
     tv._ws = sentinel
@@ -448,8 +473,11 @@ def test_relocate_unchanged_host_keeps_connection(tmp_path):
 
 
 def test_ensure_searches_once_when_unreachable(tmp_path, monkeypatch):
-    home = Home(_config(), book_path=tmp_path / "a.json",
-                locate_fn=lambda w, s, hints=None: {"tv_a": Found("192.168.2.51", "mac")})
+    home = Home(
+        _config(),
+        book_path=tmp_path / "a.json",
+        locate_fn=lambda w, s, hints=None: {"tv_a": Found("192.168.2.51", "mac")},
+    )
     tv = home.tv("tv_a")
     monkeypatch.setattr(SamsungTv, "online", lambda self: self.host == "192.168.2.51")
     assert home.ensure(tv) and tv.host == "192.168.2.51"
@@ -610,8 +638,12 @@ def test_shortcut_script_quotes_and_cyrillic():
 
     from tvpult.cli import shortcut_name, shortcut_script
 
-    s = shortcut_script(r"C:\Users\O'Neil\.venv\Scripts\pythonw.exe", "-m tvpult app",
-                        Path(r"C:\Users\O'Neil\AppData\Local\tvpult"), Path(r"C:\Data\tvpult.ico"))
+    s = shortcut_script(
+        r"C:\Users\O'Neil\.venv\Scripts\pythonw.exe",
+        "-m tvpult app",
+        Path(r"C:\Users\O'Neil\AppData\Local\tvpult"),
+        Path(r"C:\Data\tvpult.ico"),
+    )
     assert "$ErrorActionPreference = 'Stop'" in s  # a failed Save() must not look like success
     assert "'Пульт ТВ.lnk'" in s and shortcut_name() == "Пульт ТВ"  # tests run in Russian (conftest)
     assert "$s.Description = 'Пульт для телевизоров и саундбара'" in s
@@ -627,8 +659,9 @@ IMPOSTOR_MAC = "de:ad:be:ef:00:01"
 
 def test_locate_rejects_impostor_claiming_tv_mac():
     # a compromised plug at .66 answers the TV API with the living-room TV's Wi-Fi MAC; ARP knows its real MAC
-    found = _locate([("192.168.2.66", 8001)], {"192.168.2.66": TV_A_MAC}, {},
-                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)})
+    found = _locate(
+        [("192.168.2.66", 8001)], {"192.168.2.66": TV_A_MAC}, {}, arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)}
+    )
     assert found == {}
 
 
@@ -638,15 +671,19 @@ def test_locate_rejects_tv_claim_without_arp_entry():
 
 
 def test_locate_picks_real_tv_over_impostor():
-    found = _locate([("192.168.2.66", 8001), ("192.168.2.51", 8001)],
-                    {"192.168.2.66": TV_A_MAC, "192.168.2.51": TV_A_MAC}, {},
-                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC), "192.168.2.51": normalize_mac(TV_A_MAC)})
+    found = _locate(
+        [("192.168.2.66", 8001), ("192.168.2.51", 8001)],
+        {"192.168.2.66": TV_A_MAC, "192.168.2.51": TV_A_MAC},
+        {},
+        arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC), "192.168.2.51": normalize_mac(TV_A_MAC)},
+    )
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
 
 
 def test_locate_rejects_impostor_claiming_cast_uuid():
-    found = _locate([("192.168.2.66", 8009)], {}, {"192.168.2.66": BAR_UUID},
-                    arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)})
+    found = _locate(
+        [("192.168.2.66", 8009)], {}, {"192.168.2.66": BAR_UUID}, arp={"192.168.2.66": normalize_mac(IMPOSTOR_MAC)}
+    )
     assert found == {}
 
 
@@ -665,11 +702,15 @@ def test_cast_fallback_checks_every_address_of_its_mac():
 def test_locate_accepts_cabled_tv_by_lan_mac():
     lan = "aa:bb:cc:00:11:22"
     wanted = [Wanted("tv_a", "tv", mac=TV_A_MAC, lan_mac=lan)]
-    found = locate(wanted, [], scan_fn=lambda s, p: [("192.168.2.51", 8001)],
-                   slow_connect=lambda h, p: False,
-                   identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC)},  # still reports Wi-Fi MAC
-                   identify_cast_fn=lambda h: None,
-                   arp_fn=lambda: {"192.168.2.51": normalize_mac(lan)})
+    found = locate(
+        wanted,
+        [],
+        scan_fn=lambda s, p: [("192.168.2.51", 8001)],
+        slow_connect=lambda h, p: False,
+        identify_tv_fn=lambda h: {"mac": normalize_mac(TV_A_MAC)},  # still reports Wi-Fi MAC
+        identify_cast_fn=lambda h: None,
+        arp_fn=lambda: {"192.168.2.51": normalize_mac(lan)},
+    )
     assert found == {"tv_a": Found("192.168.2.51", "mac")}
 
 
@@ -686,6 +727,7 @@ def test_tv_identity_rejects_impostor_and_never_opens_remote(monkeypatch):
             raise AssertionError("tried to connect")
 
     import samsungtvws
+
     monkeypatch.setattr(samsungtvws, "SamsungTVWS", NoNetwork)
     assert not tv.online() and tv.wrong_device
     with pytest.raises(DeviceError):
