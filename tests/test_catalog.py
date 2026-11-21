@@ -139,9 +139,13 @@ def test_the_page_gets_the_app_names():
     assert names["netflix"]["ru"] == "Netflix"  # no separate Russian name: the English one
 
 
-def test_cli_lists_the_catalog(capsys):
+@pytest.mark.parametrize(("lang", "name"), [("ru", "Кинопоиск"), ("en", "Kinopoisk")])
+def test_cli_lists_the_catalog(capsys, lang, name):
     from tvpult.cli import main
+    from tvpult.i18n import use_lang
+
+    use_lang(lang)
 
     assert main(["catalog"]) == 0
     out = capsys.readouterr().out
-    assert "kinopoisk  Кинопоиск" in out and "111399000037 (2017, 2022)" in out
+    assert f"kinopoisk  {name}" in out and "111399000037 (2017, 2022)" in out
