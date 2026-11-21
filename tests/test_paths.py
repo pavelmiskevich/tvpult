@@ -89,7 +89,10 @@ def test_shortcut_runs_windowless_python_of_this_environment(tmp_path):
 
     (tmp_path / "python.exe").write_bytes(b"")
     (tmp_path / "pythonw.exe").write_bytes(b"")
-    assert shortcut_target(str(tmp_path / "python.exe")) == (str(tmp_path / "pythonw.exe"), "-m tvpult app")
+    assert shortcut_target(str(tmp_path / "python.exe"), platform="win32") == (
+        str(tmp_path / "pythonw.exe"),
+        "-m tvpult app",
+    )
 
 
 def test_shortcut_without_pythonw_is_an_error(tmp_path):
@@ -98,7 +101,7 @@ def test_shortcut_without_pythonw_is_an_error(tmp_path):
 
     (tmp_path / "python.exe").write_bytes(b"")
     with pytest.raises(DeviceError):
-        shortcut_target(str(tmp_path / "python.exe"))
+        shortcut_target(str(tmp_path / "python.exe"), platform="win32")
 
 
 def test_module_entry_point_exists():

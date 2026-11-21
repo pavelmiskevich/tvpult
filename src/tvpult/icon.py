@@ -1,8 +1,12 @@
-"""A small TV icon (.ico) for the desktop shortcut, drawn in code — no image files or libraries."""
+"""A small TV icon for the shortcut, drawn in code — no image files or libraries.
+
+.ico for Windows, .png for a Linux menu entry, .icns (a PNG inside) for a macOS app.
+"""
 
 from __future__ import annotations
 
 import struct
+import zlib
 from pathlib import Path
 
 SIZE = 64
@@ -53,3 +57,30 @@ def write_icon(path: Path, size: int = SIZE) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(icon_bytes(size))
     return path
+
+
+def png_bytes(size: int = SIZE) -> bytes:
+    """The same icon as a PNG (RGBA, top-down)."""
+    raw = b"".join(
+        b"\x00"  # filter: none
+        + b"".join(_rgba(pixel(x * SIZE // size, y * SIZE // size)) for x in range(size))
+        for y in range(size)
+    )
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)  # 8 bits per channel, RGBA
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+def icns_bytes() -> bytes:
+    """A macOS .icns with one 128x128 PNG (type ic07), which macOS 10.7 and later read."""
+    png = png_bytes(128)
+    entry = b"ic07" + struct.pack(">I", 8 + len(png)) + png
+    return b"icns" + struct.pack(">I", 8 + len(entry)) + entry
+
+
+def _rgba(bgra: tuple[int, int, int, int]) -> bytes:
+    b, g, r, a = bgra
+    return bytes((r, g, b, a))
