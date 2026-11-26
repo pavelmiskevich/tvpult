@@ -7,7 +7,7 @@
 [English version](README.md)
 
 > **Статус: ранняя версия.** Каждый день работает с двумя Samsung (2017, Tizen 3.0 и 2022, Tizen 6.5).
-> Пакет PyPI и установщик для Windows — в планах.
+> Первый выпуск на PyPI (0.1.0) и установщик для Windows — в планах.
 
 ## Что умеет
 
@@ -24,9 +24,20 @@
 Нужен [uv](https://docs.astral.sh/uv/) — он сам поставит Python 3.12 и библиотеки.
 
 ```powershell
+uv tool install tvpult    # с PyPI, начиная с первого выпуска (0.1.0)
+tvpult shortcut           # ярлык «Пульт ТВ» (в английской системе — «TV Remote»)
+```
+
+Ярлык появится на рабочем столе в Windows; в Linux — в меню приложений и на рабочем столе; в macOS — приложение
+в `~/Applications` (Launchpad, Spotlight). `uv tool upgrade tvpult` обновит пульт — ярлык продолжит работать;
+`uv tool uninstall tvpult` удалит его (ярлык и ваши настройки останутся, пока вы их не удалите).
+
+До выхода 0.1.0 или чтобы запустить самый свежий код — из исходников:
+
+```powershell
 git clone https://github.com/pavelmiskevich/tvpult
 cd tvpult
-uv run tvpult shortcut                   # ярлык «Пульт ТВ» на рабочем столе (в английской Windows — «TV Remote»)
+uv run tvpult shortcut
 ```
 
 Включите телевизоры и дважды щёлкните по ярлыку. В первый раз откроется **мастер настройки**: он найдёт
@@ -44,7 +55,7 @@ uv run tvpult shortcut                   # ярлык «Пульт ТВ» на �
 
 ## На телефоне
 
-Запустите пульт с `--lan` (`uv run tvpult serve --lan` или ярлык `uv run tvpult shortcut --lan`). На компьютере
+Запустите пульт с `--lan` (`tvpult serve --lan` или ярлык `tvpult shortcut --lan`). На компьютере
 откройте **«📱 Пульт на телефоне»**: наведите камеру телефона на QR-код и введите 6-значный PIN — один раз,
 телефон остаётся в пульте 30 дней. Там же список вошедших телефонов и кнопка «Отозвать».
 Вне дома — `--tailnet` через вашу сеть Tailscale.

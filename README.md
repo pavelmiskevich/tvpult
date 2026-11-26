@@ -9,7 +9,7 @@ window and it stops.
 *pult* is Russian for "remote control". [Русская версия](README.ru.md)
 
 > **Status: pre-alpha.** It works daily on two Samsung TVs (2017 Tizen 3.0 and 2022 Tizen 6.5).
-> PyPI packaging and a Windows installer are on the way — see [Roadmap](#roadmap).
+> The first release on PyPI (0.1.0) and a Windows installer are on the way — see [Roadmap](#roadmap).
 
 ## What it does
 
@@ -26,25 +26,32 @@ window and it stops.
 - **Desktop shortcut** (Windows, Linux, macOS): starts everything without a console window, opens the remote
   as its own window (Edge, Chrome or Chromium; otherwise a browser tab), stops ~10 s after you close it.
 
-## Quick start (from source, for now)
+## Quick start
 
 Needs [uv](https://docs.astral.sh/uv/) — it installs Python 3.12 and the dependencies by itself.
 
 ```powershell
-git clone https://github.com/pavelmiskevich/tvpult
-cd tvpult
-uv run tvpult shortcut    # creates the shortcut "TV Remote" («Пульт ТВ» on a Russian system)
+uv tool install tvpult    # from PyPI, starting with the first release (0.1.0)
+tvpult shortcut           # creates the shortcut "TV Remote" («Пульт ТВ» on a Russian system)
 ```
 
 The shortcut goes on the desktop on Windows; on Linux into the applications menu and onto the desktop; on macOS
-it is an app in `~/Applications` (Launchpad, Spotlight).
+it is an app in `~/Applications` (Launchpad, Spotlight). `uv tool upgrade tvpult` updates it later — the shortcut
+keeps working; `uv tool uninstall tvpult` removes it (the shortcut and your settings stay until you delete them).
+
+Before 0.1.0 is out, or to run the newest code, from source:
+
+```powershell
+git clone https://github.com/pavelmiskevich/tvpult
+cd tvpult
+uv run tvpult shortcut
+```
 
 Switch the TVs on and double-click the shortcut. The first time, a **setup screen** finds every Samsung TV
 on your network: give each a name, click **Connect**, press **Allow** on the TV — done, that's your remote.
 More TVs later: the **+ TV** tab. Everyday changes are in **⚙ settings**: rename or remove devices, connect a TV
 again or forget it, Wake-on-LAN on/off, "search again", and which apps sit in the quick-launch row and in what
-order. No files to edit. (Without the shortcut: `uv run tvpult serve` and open
-http://127.0.0.1:8765/.)
+order. No files to edit. (Without the shortcut: `tvpult serve` and open http://127.0.0.1:8765/.)
 
 Your files live in your user folder, not next to the code: `tvpult paths` shows where
 (Windows: `%LOCALAPPDATA%\tvpult`; Linux: `~/.config/tvpult` and `~/.local/share/tvpult`).
@@ -70,7 +77,7 @@ Please report your model in an issue — whether it works or not.
 
 ## On your phone
 
-Start the remote with `--lan` (`uv run tvpult serve --lan`, or a shortcut made with `uv run tvpult shortcut --lan`).
+Start the remote with `--lan` (`tvpult serve --lan`, or a shortcut made with `tvpult shortcut --lan`).
 On the computer, open **📱 Remote on the phone**: point the phone's camera at the QR code (or type the address)
 and enter the 6-digit PIN shown there — once; the phone stays signed in for 30 days. Phones that signed in are
 listed there and can be signed out with one click. Away from home: `--tailnet` with your own Tailscale network.
@@ -91,12 +98,12 @@ Details: [SECURITY.md](SECURITY.md) (what is and isn't protected, how to report 
 
 ## Roadmap
 
-Done: setup wizard, settings page, English and Russian UI, app catalog, finding every Samsung TV, phone access with a PIN, CI. Next:
+Done: setup wizard, settings page, English and Russian UI and error messages, app catalog, finding every Samsung
+TV, phone access with a PIN, the shortcut on Windows, Linux and macOS, CI, the release workflow. Next:
 
-1. Translated device error messages.
-2. PyPI package (`uv tool install tvpult`), first release.
-3. Windows installer with a desktop shortcut and a tray icon.
-4. Drivers for other brands.
+1. First release on PyPI (`uv tool install tvpult`), 0.1.0.
+2. Windows installer with a desktop shortcut and a tray icon.
+3. Finding Cast soundbars by themselves; drivers for other brands.
 
 ## Credits
 

@@ -97,3 +97,4 @@ never sends commands or tokens to a device it can't identify.
 - No personal data in code, tests or screenshots: MAC addresses, ids, your network's addresses. Tests use
   `192.168.1.x` and `02:00:00:…` MACs.
 - Update `CHANGELOG.md` under *Unreleased* for anything a user would notice.
+- Releases are cut by the maintainer from a tag: [docs/releasing.md](docs/releasing.md).
