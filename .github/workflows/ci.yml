@@ -59,19 +59,63 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv build
-      - name: Wheel contains the page, the example config, the dictionaries and the app catalog
+      # The page, the example config, the dictionaries and the app catalog are in the wheel, and it installs
+      # and runs in a clean environment.
+      - run: sh scripts/check-wheel.sh
+
+  install:
+    name: uv tool install and the shortcut (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    env:
+      TVPULT_LANG: en # the shortcut's name follows the system language; the checks below expect "TV Remote"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv build
+      # What a user does after the release (`uv tool install tvpult`), from the built wheel instead of PyPI.
+      - name: uv tool install
         run: |
-          unzip -l dist/*.whl | grep -q "tvpult/static/index.html"
-          unzip -l dist/*.whl | grep -q "tvpult/devices.example.toml"
-          unzip -l dist/*.whl | grep -q "tvpult/locales/en.json"
-          unzip -l dist/*.whl | grep -q "tvpult/locales/ru.json"
-          unzip -l dist/*.whl | grep -q "tvpult/apps.json"
-      # The built wheel in a clean environment, not the source tree: catches a missing data file or dependency.
-      - name: The wheel installs and runs
+          uv tool install --python 3.12 "$(ls dist/*.whl)"
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+      - name: tvpult shortcut
         run: |
-          uv venv /tmp/wheel-check
-          uv pip install --python /tmp/wheel-check dist/*.whl
-          cd /tmp
-          /tmp/wheel-check/bin/tvpult --version
-          /tmp/wheel-check/bin/tvpult catalog
-          /tmp/wheel-check/bin/tvpult keys
+          cd "$RUNNER_TEMP"
+          tvpult --version
+          tvpult paths
+          tvpult shortcut
+      - name: The shortcut is there and points at the installed tool
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'TV Remote.lnk'
+          $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+          "$($s.TargetPath) $($s.Arguments)"
+          if ($s.TargetPath -notlike '*pythonw.exe' -or -not (Test-Path $s.TargetPath)) { throw 'no pythonw target' }
+          if ($s.Arguments -ne '-m tvpult app') { throw "arguments: $($s.Arguments)" }
+          & ($s.TargetPath -replace 'pythonw.exe$', 'python.exe') -c 'import tvpult; print(tvpult.__file__)'
+      - name: The menu entry is valid and points at the installed tool
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y -qq desktop-file-utils > /dev/null
+          entry="$HOME/.local/share/applications/tvpult.desktop"
+          cat "$entry"
+          desktop-file-validate "$entry"
+          test -x "$entry"
+          grep -q "^Exec=.*$(uv tool dir)/tvpult/bin/python" "$entry"
+      - name: The app bundle is valid and points at the installed tool
+        if: runner.os == 'macOS'
+        run: |
+          app="$HOME/Applications/TV Remote.app"
+          plutil -lint "$app/Contents/Info.plist"
+          cat "$app/Contents/MacOS/tvpult"
+          sh -n "$app/Contents/MacOS/tvpult"
+          test -x "$app/Contents/MacOS/tvpult"
+          test -s "$app/Contents/Resources/tvpult.icns"
+          grep -q "$(uv tool dir)/tvpult/bin/python" "$app/Contents/MacOS/tvpult"

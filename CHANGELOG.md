@@ -53,6 +53,11 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
   clean environment and runs it, and checks the formatting. Dependabot keeps the actions and `uv.lock` current. (#38)
 
 ### Added
+- Releases go to PyPI from a tag (#9): pushing `vX.Y.Z` checks the version and the CHANGELOG section, runs the
+  tests, builds and checks the package, publishes it with Trusted Publishing (no stored token) and makes the
+  GitHub release — [docs/releasing.md](docs/releasing.md). CI now installs the built wheel with `uv tool install`
+  on Windows, Linux and macOS and makes the shortcut there: a `.lnk` pointing at the tool's `pythonw`, a
+  `.desktop` entry that passes `desktop-file-validate`, an `.app` bundle with a valid `Info.plist`.
 - `tvpult shortcut` on Linux and macOS (#35): on Linux a menu entry (`.desktop`, plus one on the desktop if there
   is a desktop folder), on macOS an app in `~/Applications`; both start the remote without a terminal. The remote
   opens as its own window with Chrome, Chromium, Edge or Brave on these systems too. Before, the command failed
